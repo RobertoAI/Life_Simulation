@@ -95,3 +95,70 @@ function heatColor(val) {
         return [r, g, 0];
    }
 }
+
+/**
+ * Render agents as colored 3x3 dots on a canvas using ImageData.
+ * Agent color is based on energy: green (high) -> yellow (medium) -> red (low).
+ * Pixels are drawn on top of whatever is already on the canvas.
+ *
+ * @param {HTMLCanvasElement} canvas - The target canvas element (overlay layer).
+ * @param {Object[]} agents - Array of agent objects with {x, y, energy}.
+ * @param {number} mapWidth - Grid width (matches terrain width).
+ * @param {number} mapHeight - Grid height (matches terrain height).
+ */
+function renderAgents(canvas, agents, mapWidth, mapHeight) {
+    canvas.width = mapWidth;
+    canvas.height = mapHeight;
+    const ctx = canvas.getContext('2d');
+
+    // Clear the overlay canvas
+    ctx.clearRect(0, 0, mapWidth, mapHeight);
+
+    const imageData = ctx.createImageData(mapWidth, mapHeight);
+    const data = imageData.data;
+
+    const DOT_RADIUS = 1;  // 3x3 pixel dots (center +/- 1)
+
+    for (let i = 0; i < agents.length; i++) {
+        const agent = agents[i];
+        const ax = Math.floor(agent.x);
+        const ay = Math.floor(agent.y);
+
+        // Skip agents outside map bounds
+        if (ax < 0 || ax >= mapWidth || ay < 0 || ay >= mapHeight) continue;
+
+        // Color based on energy: green (high) -> yellow (medium) -> red (low)
+        const energy = Math.max(0, Math.min(1, agent.energy));
+        let r, g, b;
+        if (energy >= 0.5) {
+            // Yellow (0.5) to green (1.0)
+            const t = (energy - 0.5) * 2;  // 0..1
+            r = Math.round(200 * (1 - t));
+            g = 200 + Math.round(55 * t);
+            b = 0;
+        } else {
+            // Red (0) to yellow (0.5)
+            const t = energy * 2;  // 0..1
+            r = 200;
+            g = Math.round(200 * t);
+            b = 0;
+        }
+
+        // Draw 3x3 dot
+        for (let dy = -DOT_RADIUS; dy <= DOT_RADIUS; dy++) {
+            for (let dx = -DOT_RADIUS; dx <= DOT_RADIUS; dx++) {
+                const px = ax + dx;
+                const py = ay + dy;
+                if (px >= 0 && px < mapWidth && py >= 0 && py < mapHeight) {
+                    const idx = (py * mapWidth + px) * 4;
+                    data[idx] = r;
+                    data[idx + 1] = g;
+                    data[idx + 2] = b;
+                    data[idx + 3] = 255;
+                }
+            }
+        }
+    }
+
+    ctx.putImageData(imageData, 0, 0);
+}
