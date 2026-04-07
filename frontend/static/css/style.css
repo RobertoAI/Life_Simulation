@@ -1,0 +1,305 @@
+/* AI Life Simulator - Base Styles */
+
+/* Reset and base */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+:root {
+    --bg-primary: #1a1a2e;
+    --bg-secondary: #16213e;
+    --bg-card: #0f3460;
+    --text-primary: #e4e4e4;
+    --text-secondary: #a0a0b0;
+    --accent: #e94560;
+    --accent-hover: #ff6b81;
+    --success: #2ecc71;
+    --warning: #f39c12;
+    --border-color: #1a3a5c;
+    --font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, sans-serif;
+}
+
+body {
+    font-family: var(--font-family);
+    background-color: var(--bg-primary);
+    color: var(--text-primary);
+    line-height: 1.6;
+    min-height: 100vh;
+}
+
+/* Header / Navigation */
+header {
+    background-color: var(--bg-secondary);
+    border-bottom: 2px solid var(--border-color);
+    padding: 1rem 2rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+header h1 {
+    font-size: 1.6rem;
+    color: var(--accent);
+    letter-spacing: 1px;
+}
+
+header nav {
+    display: flex;
+    gap: 0.25rem;
+    flex-wrap: wrap;
+}
+
+header nav a {
+    color: var(--text-secondary);
+    text-decoration: none;
+    padding: 0.4rem 0.8rem;
+    border-radius: 4px;
+    font-size: 0.9rem;
+    transition: color 0.2s, background-color 0.2s;
+}
+
+header nav a:hover,
+header nav a.active {
+    color: var(--text-primary);
+    background-color: var(--bg-card);
+}
+
+/* Main content area */
+main {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 2rem 1rem;
+}
+
+/* Cards */
+.card {
+    background-color: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 1.5rem;
+    margin-bottom: 1.5rem;
+}
+
+.card h2 {
+    color: var(--accent);
+    margin-bottom: 0.75rem;
+    font-size: 1.2rem;
+}
+
+.card p {
+    color: var(--text-secondary);
+}
+
+/* Cards grid for homepage */
+.cards-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 1.5rem;
+    margin-top: 2rem;
+}
+
+.cards-grid .card {
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.cards-grid .card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 8px 24px rgba(233, 69, 96, 0.15);
+}
+
+.cards-grid a {
+    text-decoration: none;
+    color: inherit;
+}
+
+/* Status indicators */
+.status-badge {
+    display: inline-block;
+    padding: 0.25rem 0.75rem;
+    border-radius: 12px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+.status-running {
+    background-color: var(--success);
+    color: #fff;
+}
+
+.status-stopped {
+    background-color: var(--accent);
+    color: #fff;
+}
+
+.status-paused {
+    background-color: var(--warning);
+    color: #fff;
+}
+
+/* Buttons */
+.btn {
+    display: inline-block;
+    padding: 0.5rem 1.25rem;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.95rem;
+    font-weight: 600;
+    transition: background-color 0.2s, transform 0.1s;
+    color: #fff;
+}
+
+.btn:active {
+    transform: scale(0.97);
+}
+
+.btn-start {
+    background-color: var(--success);
+}
+
+.btn-start:hover {
+    background-color: #27ae60;
+}
+
+.btn-stop {
+    background-color: var(--accent);
+}
+
+.btn-stop:hover {
+    background-color: var(--accent-hover);
+}
+
+.btn-pause {
+    background-color: var(--warning);
+}
+
+.btn-pause:hover {
+    background-color: #e67e22;
+}
+
+.btn-group {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+/* Canvas container */
+.canvas-container {
+    position: relative;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    background-color: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 1rem;
+    margin-bottom: 1.5rem;
+    overflow: hidden;
+}
+
+.canvas-container canvas {
+    image-rendering: pixelated;
+    max-width: 100%;
+    height: auto;
+    border: 1px solid var(--border-color);
+}
+
+/* Info panel */
+.info-panel {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+}
+
+.info-item {
+    background-color: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    padding: 0.75rem 1rem;
+    text-align: center;
+}
+
+.info-item .label {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.info-item .value {
+    font-size: 1.4rem;
+    font-weight: 700;
+    color: var(--accent);
+    margin-top: 0.25rem;
+}
+
+/* Speed selector */
+.speed-selector {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+    margin-top: 0.5rem;
+}
+
+.speed-btn {
+    padding: 0.35rem 0.75rem;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    background-color: var(--bg-card);
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-size: 0.85rem;
+    transition: all 0.2s;
+}
+
+.speed-btn:hover,
+.speed-btn.active {
+    background-color: var(--accent);
+    color: var(--text-primary);
+    border-color: var(--accent);
+}
+
+/* Toggle switch */
+.toggle-wrap {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.toggle-wrap label {
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    cursor: pointer;
+}
+
+/* Footer */
+footer {
+    text-align: center;
+    padding: 1.5rem;
+    color: var(--text-secondary);
+    font-size: 0.8rem;
+    border-top: 1px solid var(--border-color);
+    margin-top: 2rem;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    header {
+        flex-direction: column;
+        text-align: center;
+    }
+
+    header nav {
+        justify-content: center;
+    }
+
+    .info-panel {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}

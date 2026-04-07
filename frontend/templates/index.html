@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+
+{% block title %}AI Life Simulator - Home{% endblock %}
+
+{% block content %}
+<div class="hero" style="text-align: center; padding: 3rem 1rem;">
+    <h2 style="font-size: 2.5rem; margin-bottom: 0.5rem; color: var(--accent);">
+        AI Life Simulator
+    </h2>
+    <p style="color: var(--text-secondary); font-size: 1.2rem; margin-bottom: 2rem;">
+        Real-time simulation platform with evolving agents, dynamic ecosystems, and GPU-accelerated analytics.
+    </p>
+</div>
+
+<!-- Live Status -->
+<div class="card" id="status-card">
+    <h2>Simulation Status</h2>
+    <div class="info-panel" id="home-status">
+        <div class="info-item">
+            <div class="label">Status</div>
+            <div class="value" id="home-sim-status">Loading...</div>
+        </div>
+        <div class="info-item">
+            <div class="label">Current Tick</div>
+            <div class="value" id="home-tick">--</div>
+        </div>
+        <div class="info-item">
+            <div class="label">Grid Size</div>
+            <div class="value" id="home-grid">--</div>
+        </div>
+        <div class="info-item">
+            <div class="label">Speed</div>
+            <div class="value" id="home-speed">--</div>
+        </div>
+    </div>
+</div>
+
+<!-- Quick Links -->
+<div class="cards-grid">
+    <a href="/simulation">
+        <div class="card">
+            <h2>&#x1F30D; Simulation</h2>
+            <p>View the world map in real-time. Toggle heatmap, control speed, start/stop the simulation.</p>
+        </div>
+    </a>
+    <a href="/agents">
+        <div class="card">
+            <h2>&#x1F9EC; Agents</h2>
+            <p>Upcoming: Individual agent tracking, genome visualization, population charts.</p>
+        </div>
+    </a>
+    <a href="/gpu">
+        <div class="card">
+            <h2>&#x1F4CA; GPU Monitoring</h2>
+            <p>Upcoming: GPU utilization, VRAM tracking, temperature graphs.</p>
+        </div>
+    </a>
+    <a href="/analytics">
+        <div class="card">
+            <h2>&#x1F4C8; Analytics</h2>
+            <p>Upcoming: Population trends, fitness distributions, diversity indexes.</p>
+        </div>
+    </a>
+    <a href="/stress-test">
+        <div class="card">
+            <h2>&#x1F4A5; Stress Test</h2>
+            <p>Upcoming: Push 50K+ agents, measure performance, find breaking points.</p>
+        </div>
+    </a>
+    <a href="/settings">
+        <div class="card">
+            <h2>&#x2699;&#xFE0F; Settings</h2>
+            <p>Upcoming: Configure grid size, tick rate, agent parameters, and save/load worlds.</p>
+        </div>
+    </a>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // Load status on page load
+    async function loadStatus() {
+        try {
+            const res = await fetch('/api/simulation/status');
+            const data = await res.json();
+            document.getElementById('home-sim-status').textContent = data.status || 'unknown';
+            document.getElementById('home-tick').textContent = data.tick ?? '--';
+            document.getElementById('home-grid').textContent =
+                (data.grid_width ? `${data.grid_width}x${data.grid_height}` : '--');
+            document.getElementById('home-speed').textContent =
+                (data.speed ? data.speed + 'x' : '--');
+        } catch (e) {
+            document.getElementById('home-sim-status').textContent = 'offline';
+        }
+    }
+    loadStatus();
+    // Refresh every 2 seconds
+    setInterval(loadStatus, 2000);
+</script>
+{% endblock %}
