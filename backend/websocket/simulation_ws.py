@@ -18,9 +18,11 @@ async def websocket_endpoint_simulation(
     """
     await websocket.accept()
     interval_s = ws_interval_ms / 1000.0
+    tick_counter = 0
 
     try:
         while True:
+            tick_counter += 1
             # Build the status payload
             status = engine.get_status()
             metrics = engine.get_metrics()[-1] if engine.get_metrics() else {}
@@ -30,6 +32,10 @@ async def websocket_endpoint_simulation(
                 "data": status,
                 "metrics": metrics,
             }
+
+            # Include agents every 3rd tick, only when running
+            if status.get("status") == "running" and tick_counter % 3 == 0:
+                message["agents"] = engine.agents.get_alive_agents_for_ws(500)
 
             await websocket.send_json(message)
             await asyncio.sleep(interval_s)

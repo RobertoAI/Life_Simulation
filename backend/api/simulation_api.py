@@ -87,3 +87,31 @@ async def get_map():
         "terrain": _engine.world.get_map_data(),
         "resources": _engine.world.get_resource_map(),
     }
+
+
+@router.get("/agents")
+async def get_agents(page: int = 1, per_page: int = 20):
+    """Get paginated list of alive agents.
+
+    Args:
+        page: Page number (1-indexed, default 1).
+        per_page: Number of agents per page (default 20).
+    """
+    if _engine is None:
+        return {"error": "Engine not initialized"}
+    return _engine.get_agents_page(page=page - 1, per_page=per_page)
+
+
+@router.get("/agents/{agent_id}")
+async def get_agent(agent_id: int):
+    """Get a single agent by ID.
+
+    Args:
+        agent_id: Unique agent identifier.
+    """
+    if _engine is None:
+        return {"error": "Engine not initialized"}
+    agent = _engine.agents.get_agent_by_id(agent_id)
+    if agent is None:
+        return {"error": f"Agent {agent_id} not found"}
+    return agent
