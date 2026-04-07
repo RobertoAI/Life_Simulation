@@ -1,0 +1,242 @@
+/**
+ * agent-cards.css - Genome, personality, and agent detail visualization styles.
+ */
+
+/* ===== Genome Visualization ===== */
+
+.genome-section {
+    margin-top: 1rem;
+    padding-top: 0.75rem;
+    border-top: 1px solid var(--border-color);
+}
+
+.genome-section h4 {
+    color: var(--text-secondary);
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 0.5rem;
+}
+
+.gene-bar-container {
+    margin-bottom: 0.35rem;
+}
+
+.gene-bar-label {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.75rem;
+    margin-bottom: 2px;
+}
+
+.gene-bar-label .gene-name {
+    color: var(--text-primary);
+    font-weight: 500;
+}
+
+.gene-bar-label .gene-value {
+    color: var(--text-secondary);
+    font-family: monospace;
+}
+
+.gene-bar {
+    width: 100%;
+    height: 6px;
+    background-color: var(--bg-primary);
+    border-radius: 3px;
+    overflow: hidden;
+}
+
+.gene-bar-fill {
+    height: 100%;
+    border-radius: 3px;
+    transition: width 0.3s;
+}
+
+/* Gene value color coding */
+.gene-high { background-color: #2ecc71; }
+.gene-medium { background-color: #f39c12; }
+.gene-low { background-color: #e94560; }
+
+/* ===== Personality Visualization ===== */
+
+.personality-section {
+    margin-top: 1rem;
+    padding-top: 0.75rem;
+    border-top: 1px solid var(--border-color);
+}
+
+.personality-section h4 {
+    color: var(--text-secondary);
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 0.5rem;
+}
+
+.trait-bar-container {
+    margin-bottom: 0.35rem;
+}
+
+.trait-bar-label {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.75rem;
+    margin-bottom: 2px;
+}
+
+.trait-bar-label .trait-name {
+    color: var(--text-primary);
+    font-weight: 500;
+}
+
+.trait-bar-label .trait-value {
+    color: var(--text-secondary);
+    font-family: monospace;
+}
+
+.trait-bar {
+    width: 100%;
+    height: 6px;
+    background-color: var(--bg-primary);
+    border-radius: 3px;
+    overflow: hidden;
+}
+
+.trait-bar-fill {
+    height: 100%;
+    border-radius: 3px;
+    transition: width 0.3s;
+}
+
+/* Trait value color coding */
+.trait-high { background-color: #2ecc71; }
+.trait-medium { background-color: #f39c12; }
+.trait-low { background-color: #e94560; }
+
+/* ===== Agent Status Bars (energy, health, hunger) ===== */
+
+.stat-bar-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
+}
+
+.stat-bar-row .stat-bar-label {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    min-width: 55px;
+}
+
+.stat-bar-row .stat-bar-track {
+    flex: 1;
+    height: 8px;
+    background-color: var(--bg-primary);
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.stat-bar-row .stat-bar-fill {
+    height: 100%;
+    border-radius: 4px;
+    transition: width 0.3s;
+}
+
+.stat-bar-row .stat-bar-pct {
+    font-size: 0.75rem;
+    font-family: monospace;
+    color: var(--text-primary);
+    min-width: 36px;
+    text-align: right;
+}
+
+/* ===== Generation Badge ===== */
+
+.gen-badge {
+    display: inline-block;
+    padding: 0.1rem 0.45rem;
+    border-radius: 8px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    background-color: rgba(155, 89, 182, 0.15);
+    color: #9b59b6;
+}
+
+/* ===== Parent Link ===== */
+
+.parent-link {
+    color: var(--accent);
+    cursor: pointer;
+    text-decoration: underline;
+    font-size: 0.85rem;
+}
+
+.parent-link:hover {
+    color: var(--accent-hover);
+}
+
+.no-parent {
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+}
+
+/* ===== Expanded Modal Layout ===== */
+
+.agent-modal {
+    max-width: 480px;
+    width: 95%;
+    max-height: 85vh;
+    overflow-y: auto;
+}
+
+.agent-modal .modal-section-title {
+    color: var(--accent);
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    border-bottom: 1px solid var(--border-color);
+    padding-bottom: 0.3rem;
+    margin-top: 1rem;
+    margin-bottom: 0.5rem;
+}
+
+.agent-modal .modal-section-title:first-child {
+    margin-top: 0;
+}
+
+/* ===== Responsive ===== */
+
+@media (max-width: 600px) {
+    .agent-modal {
+        width: 98%;
+        padding: 1rem;
+    }
+
+    .gene-bar-label,
+    .trait-bar-label {
+        font-size: 0.7rem;
+    }
+
+    .stat-bar-row .stat-bar-label {
+        min-width: 45px;
+        font-size: 0.7rem;
+    }
+}
+
+/* ===== Column Genome/Personality Mini-Indicators in Table ===== */
+
+.genome-indicator {
+    display: inline-flex;
+    gap: 2px;
+}
+
+.genome-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+}
+
+.genome-dot.high { background-color: #2ecc71; }
+.genome-dot.medium { background-color: #f39c12; }
+.genome-dot.low { background-color: #e94560; }
