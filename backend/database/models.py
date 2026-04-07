@@ -100,4 +100,5 @@ CREATE INDEX IF NOT EXISTS idx_generation_stats_sim ON generation_stats(simulati
 CREATE INDEX IF NOT EXISTS idx_tick_metrics_sim_tick ON tick_metrics(simulation_id, tick);
 CREATE INDEX IF NOT EXISTS idx_gpu_history_tick ON gpu_history(tick);
 CREATE INDEX IF NOT EXISTS idx_balance_adj_sim ON balance_adjustments(simulation_id, tick);
+CREATE INDEX IF NOT EXISTS idx_gpu_history_timestamp ON gpu_history(timestamp);
 """
