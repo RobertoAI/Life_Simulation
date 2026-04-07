@@ -4,10 +4,15 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}AI Life Simulator{% endblock %}</title>
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#0d1117">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <link rel="apple-touch-icon" href="/static/icons/icon.svg">
     <link rel="stylesheet" href="/static/css/style.css">
     {% block head_extra %}{% endblock %}
 </head>
-<body>
+<body data-page="{{ request.url.path }}">
     <header>
         <h1>AI Life Simulator</h1>
         <nav>
@@ -29,6 +34,9 @@
         <p>&copy; 2025 AI Life Simulator - Roberto Pagano</p>
     </footer>
 
+    <script src="/static/js/pwa-install.js" defer></script>
+    <script src="/static/js/mobile-nav.js" defer></script>
+    <script src="/static/sw-register.js" defer></script>
     {% block scripts %}{% endblock %}
 </body>
 </html>
