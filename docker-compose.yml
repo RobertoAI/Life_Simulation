@@ -1,8 +1,29 @@
-version: "3.8"
 services:
   app:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: life-simulation
     ports:
-      - "8000:8000"
+      - "${APP_PORT:-8000}:8000"
+    environment:
+      - GRID_WIDTH=${GRID_WIDTH:-200}
+      - GRID_HEIGHT=${GRID_HEIGHT:-200}
+      - TICK_INTERVAL_MS=${TICK_INTERVAL_MS:-50}
+      - WS_INTERVAL_MS=${WS_INTERVAL_MS:-200}
+      - INITIAL_POPULATION=${INITIAL_POPULATION:-1000}
+      - MAX_AGENTS=${MAX_AGENTS:-10000}
+      - GPU_MONITOR_INTERVAL=${GPU_MONITOR_INTERVAL:-1}
     volumes:
-      - ./data:/app/data
+      - sim-data:/app/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/simulation/status')"]
+      interval: 15s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+    restart: unless-stopped
+
+volumes:
+  sim-data:
+    driver: local

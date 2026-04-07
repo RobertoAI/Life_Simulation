@@ -1,8 +1,10 @@
 """REST API routes for simulation control and data."""
 
 from fastapi import APIRouter
+from pydantic import BaseModel
 
 from backend.simulation.engine import SimulationEngine
+
 
 router = APIRouter(prefix="/api/simulation", tags=["simulation"])
 
@@ -115,3 +117,46 @@ async def get_agent(agent_id: int):
     if agent is None:
         return {"error": f"Agent {agent_id} not found"}
     return agent
+
+
+# ----------------------------------------------------------------------- #
+# Configuration endpoints
+# ----------------------------------------------------------------------- #
+
+
+class SimulationConfig(BaseModel):
+    grid_width: int
+    grid_height: int
+    tick_interval_ms: int
+    ws_interval_ms: int
+    initial_population: int
+    max_agents: int
+    stress_test_agents: int
+    snapshot_interval: int
+    gpu_monitor_interval: int
+    db_path: str
+
+
+@router.get("/config")
+async def get_config():
+    """Get current simulation configuration."""
+    if _config_class is None:
+        return {"error": "Config not initialized"}
+    return _config_class.to_dict()
+
+
+@router.put("/config")
+async def update_config(config: SimulationConfig):
+    """Update simulation configuration."""
+    if _config_class is None:
+        return {"success": False, "error": "Config not initialized"}
+
+    try:
+        data = config.model_dump()
+    except AttributeError:
+        data = config.dict()
+
+    for key, value in data.items():
+        setattr(_config_class, key, value)
+
+    return {"success": True}

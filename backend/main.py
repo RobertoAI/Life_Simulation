@@ -128,3 +128,48 @@ async def simulation_page(request: Request):
         "simulation.html",
         {"request": request, "settings": Settings.to_dict()},
     )
+
+
+@app.get("/settings", response_class=HTMLResponse)
+async def settings_page(request: Request):
+    """Settings page for simulation configuration."""
+    return templates.TemplateResponse(
+        "settings.html",
+        {"request": request, "settings": Settings.to_dict()},
+    )
+
+
+@app.get("/agents", response_class=HTMLResponse)
+async def agents_page(request: Request):
+    """Agent cards page."""
+    return templates.TemplateResponse(
+        "agents.html",
+        {"request": request},
+    )
+
+
+@app.get("/gpu", response_class=HTMLResponse)
+async def gpu_page(request: Request):
+    """GPU monitoring dashboard."""
+    return templates.TemplateResponse(
+        "gpu.html",
+        {"request": request},
+    )
+
+
+@app.get("/analytics", response_class=HTMLResponse)
+async def analytics_page(request: Request):
+    """Analytics and metrics dashboard."""
+    return templates.TemplateResponse(
+        "analytics.html",
+        {"request": request},
+    )
+
+
+@app.get("/stress-test", response_class=HTMLResponse)
+async def stress_test_page(request: Request):
+    """Stress test page."""
+    return templates.TemplateResponse(
+        "stress_test.html",
+        {"request": request, "settings": Settings.to_dict()},
+    )

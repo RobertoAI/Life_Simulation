@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+
+{% block title %}Settings - AI Life Simulator{% endblock %}
+
+{% block head_extra %}
+<link rel="stylesheet" href="/static/css/dashboard.css">
+{% endblock %}
+
+{% block content %}
+<div class="settings-container">
+    <h2>Simulation Settings</h2>
+    <p class="subtitle">Configure simulation parameters. Changes require restarting the simulation.</p>
+
+    <form id="settings-form" class="settings-form">
+        <div class="settings-grid">
+            <!-- Grid Dimensions -->
+            <div class="setting-card">
+                <h3>World Dimensions</h3>
+                <div class="setting-field">
+                    <label for="grid_width">Grid Width</label>
+                    <input type="number" id="grid_width" name="grid_width" min="50" max="1000" step="10">
+                    <span class="hint">Width of the simulation grid in cells (default: 200)</span>
+                </div>
+                <div class="setting-field">
+                    <label for="grid_height">Grid Height</label>
+                    <input type="number" id="grid_height" name="grid_height" min="50" max="1000" step="10">
+                    <span class="hint">Height of the simulation grid in cells (default: 200)</span>
+                </div>
+            </div>
+
+            <!-- Timing -->
+            <div class="setting-card">
+                <h3>Timing</h3>
+                <div class="setting-field">
+                    <label for="tick_interval_ms">Tick Interval (ms)</label>
+                    <input type="number" id="tick_interval_ms" name="tick_interval_ms" min="10" max="500">
+                    <span class="hint">Milliseconds per simulation tick (default: 50)</span>
+                </div>
+                <div class="setting-field">
+                    <label for="ws_interval_ms">WebSocket Interval (ms)</label>
+                    <input type="number" id="ws_interval_ms" name="ws_interval_ms" min="50" max="1000">
+                    <span class="hint">Client update broadcast interval (default: 200)</span>
+                </div>
+            </div>
+
+            <!-- Population -->
+            <div class="setting-card">
+                <h3>Population</h3>
+                <div class="setting-field">
+                    <label for="initial_population">Initial Population</label>
+                    <input type="number" id="initial_population" name="initial_population" min="10" max="50000" step="100">
+                    <span class="hint">Number of agents at startup (default: 1000)</span>
+                </div>
+                <div class="setting-field">
+                    <label for="max_agents">Max Agents</label>
+                    <input type="number" id="max_agents" name="max_agents" min="100" max="100000" step="1000">
+                    <span class="hint">Hard cap on total agents (default: 10000)</span>
+                </div>
+                <div class="setting-field">
+                    <label for="stress_test_agents">Stress Test Agents</label>
+                    <input type="number" id="stress_test_agents" name="stress_test_agents" min="5000" max="500000" step="5000">
+                    <span class="hint">Max agents for stress testing (default: 50000)</span>
+                </div>
+            </div>
+
+            <!-- System -->
+            <div class="setting-card">
+                <h3>System</h3>
+                <div class="setting-field">
+                    <label for="snapshot_interval">Snapshot Interval</label>
+                    <input type="number" id="snapshot_interval" name="snapshot_interval" min="10" max="1000" step="10">
+                    <span class="hint">Ticks between state snapshots (default: 100)</span>
+                </div>
+                <div class="setting-field">
+                    <label for="gpu_monitor_interval">GPU Monitor Interval (s)</label>
+                    <input type="number" id="gpu_monitor_interval" name="gpu_monitor_interval" min="1" max="60">
+                    <span class="hint">Seconds between GPU readings (default: 1)</span>
+                </div>
+                <div class="setting-field">
+                    <label for="db_path">Database Path</label>
+                    <input type="text" id="db_path" name="db_path" placeholder="data/simulation.db">
+                    <span class="hint">Path to SQLite database (default: data/simulation.db)</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="settings-actions">
+            <button type="submit" class="btn-primary" id="save-btn">Save Settings</button>
+            <button type="button" class="btn-secondary" id="export-btn">Export Data</button>
+            <button type="button" class="btn-secondary" id="reset-btn">Reset Defaults</button>
+        </div>
+
+        <div id="settings-message" class="message" style="display:none;"></div>
+    </form>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/settings.js"></script>
+{% endblock %}
