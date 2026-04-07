@@ -101,4 +101,14 @@ CREATE INDEX IF NOT EXISTS idx_tick_metrics_sim_tick ON tick_metrics(simulation_
 CREATE INDEX IF NOT EXISTS idx_gpu_history_tick ON gpu_history(tick);
 CREATE INDEX IF NOT EXISTS idx_balance_adj_sim ON balance_adjustments(simulation_id, tick);
 CREATE INDEX IF NOT EXISTS idx_gpu_history_timestamp ON gpu_history(timestamp);
+
+CREATE TABLE IF NOT EXISTS push_subscriptions (
+    id TEXT PRIMARY KEY,
+    endpoint TEXT NOT NULL,
+    p256dh_key TEXT NOT NULL,
+    auth_key TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    last_notification TIMESTAMP,
+    active INTEGER DEFAULT 1
+);
 """
