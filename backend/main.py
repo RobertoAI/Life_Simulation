@@ -12,21 +12,24 @@ from fastapi.templating import Jinja2Templates
 from backend.config import Settings
 from backend.database.db import init_db
 from backend.simulation.engine import SimulationEngine
-from backend.api.simulation_api import router as simulation_router, init_router
+from backend.api.simulation_api import router as simulation_router, init_router, set_session_manager
 from backend.api.gpu import router as gpu_router, init_gpu_router
+from backend.api.sessions_api import router as sessions_router, init_sessions_router
+from backend.api.interact_ws import websocket_endpoint_interact
 from backend.websocket.simulation_ws import websocket_endpoint_simulation
 from backend.websocket.gpu_ws import websocket_endpoint_gpu
 from backend.gpu_monitor import create_gpu_monitor
+from backend.sessions import create_session_manager, SessionManager
 
 
-# Globals
+# Backwards-compatible global reference (mirrors session_manager.get_session("main"))
 engine: SimulationEngine | None = None
 gpu_monitor = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Application lifespan: initialize database, simulation engine, and GPU monitor."""
+    """Application lifespan: initialize database, simulation engine, session manager, and GPU monitor."""
     global engine, gpu_monitor
 
     # Initialize database
@@ -37,8 +40,13 @@ async def lifespan(app: FastAPI):
 
     init_db(db_path)
 
-    # Initialize simulation engine
-    engine = SimulationEngine(Settings)
+    # Initialize session manager and create default "main" session
+    session_manager = create_session_manager()
+    session_manager.create_default_session(Settings)
+    app.state.session_manager = session_manager
+
+    # Backwards-compatible reference
+    engine = session_manager.get_session("main")
 
     # Initialize GPU monitor
     gpu_monitor = create_gpu_monitor(interval=Settings.gpu_monitor_interval)
@@ -48,6 +56,8 @@ async def lifespan(app: FastAPI):
     # Initialize router references
     init_router(engine, Settings)
     init_gpu_router(gpu_monitor)
+    set_session_manager(session_manager)
+    init_sessions_router(session_manager)
 
     yield  # Server is running
 
@@ -81,6 +91,7 @@ templates = Jinja2Templates(directory=str(_project_root / "frontend" / "template
 # Include API routers
 app.include_router(simulation_router)
 app.include_router(gpu_router)
+app.include_router(sessions_router)
 
 
 @app.get("/ws/simulation")
@@ -94,6 +105,16 @@ async def websocket_sim_endpoint(websocket: WebSocket):
         engine,
         ws_interval_ms=Settings.ws_interval_ms,
     )
+
+
+@app.websocket("/ws/interact/{session_id}")
+async def websocket_interact_endpoint(websocket: WebSocket, session_id: str):
+    """WebSocket endpoint for real-time user interactions with a session."""
+    sm: SessionManager | None = getattr(app.state, "session_manager", None)
+    if sm is None:
+        await websocket.close(code=1011, reason="Session manager not ready")
+        return
+    await websocket_endpoint_interact(websocket, session_id, sm)
 
 
 @app.get("/ws/gpu")
