@@ -3,6 +3,9 @@
 import numpy as np
 from typing import NamedTuple
 
+from backend.simulation.genome import random_genome
+from backend.simulation.personality import random_personality
+
 # Maximum number of agents that can be returned in a single WebSocket broadcast.
 _MAX_WS_AGENTS = 500
 
@@ -39,6 +42,23 @@ class AgentState:
         self.parent_ids: np.ndarray = np.full(max_capacity, -1, dtype=np.int32)
         self.generation: np.ndarray = np.zeros(max_capacity, dtype=np.int32)
 
+        # -- Genome arrays (7 float genes + 1 int gene) --
+        self.genome_speed: np.ndarray = np.zeros(max_capacity, dtype=np.float32)
+        self.genome_metabolism: np.ndarray = np.zeros(max_capacity, dtype=np.float32)
+        self.genome_fertility: np.ndarray = np.zeros(max_capacity, dtype=np.float32)
+        self.genome_resilience: np.ndarray = np.zeros(max_capacity, dtype=np.float32)
+        self.genome_aggression: np.ndarray = np.zeros(max_capacity, dtype=np.float32)
+        self.genome_intelligence: np.ndarray = np.zeros(max_capacity, dtype=np.float32)
+        self.genome_size: np.ndarray = np.zeros(max_capacity, dtype=np.float32)
+        self.genome_vision: np.ndarray = np.zeros(max_capacity, dtype=np.int32)
+
+        # -- Personality arrays (Big Five) --
+        self.personality_openness: np.ndarray = np.zeros(max_capacity, dtype=np.float32)
+        self.personality_conscientiousness: np.ndarray = np.zeros(max_capacity, dtype=np.float32)
+        self.personality_extraversion: np.ndarray = np.zeros(max_capacity, dtype=np.float32)
+        self.personality_agreeableness: np.ndarray = np.zeros(max_capacity, dtype=np.float32)
+        self.personality_neuroticism: np.ndarray = np.zeros(max_capacity, dtype=np.float32)
+
         # Simple monotonic counter for assigning unique agent_ids
         self._next_id = 0
 
@@ -66,17 +86,28 @@ class AgentState:
         energy: float = 100.0,
         parent_id: int = -1,
         generation: int = 0,
+        genome: dict | None = None,
+        personality: dict | None = None,
     ) -> int:
         """Place a single agent in the next free slot.
+
+        If *genome* and *personality* are not provided, random defaults
+        are generated.
 
         Returns the assigned ``agent_id``, or ``-1`` if the capacity is full.
         """
         if self.active_count >= self.capacity:
             return -1
 
+        # Generate random genome/personality if not provided
+        if genome is None:
+            genome = random_genome(1)
+        if personality is None:
+            personality = random_personality(1)
+
         idx = int(np.argmax(~self.alive))  # first dead slot
         return self._populate(
-            idx, x, y, energy, parent_id, generation
+            idx, x, y, energy, parent_id, generation, genome, personality
         )
 
     def spawn_batch(
@@ -86,6 +117,8 @@ class AgentState:
         world_height: int,
     ) -> int:
         """Randomly spawn *count* agents onto the grid.
+
+        Generates random genomes and personalities for all spawned agents.
 
         Returns the number of agents actually spawned (may be less than
         *count* if capacity is nearly full).
@@ -106,6 +139,26 @@ class AgentState:
         self.age[indices] = 0
         self.parent_ids[indices] = -1
         self.generation[indices] = 0
+
+        # Generate random genomes for all new agents
+        gen = random_genome(n)
+        self.genome_speed[indices] = gen["speed"]
+        self.genome_metabolism[indices] = gen["metabolism"]
+        self.genome_fertility[indices] = gen["fertility"]
+        self.genome_resilience[indices] = gen["resilience"]
+        self.genome_aggression[indices] = gen["aggression"]
+        self.genome_intelligence[indices] = gen["intelligence"]
+        self.genome_size[indices] = gen["size"]
+        self.genome_vision[indices] = gen["vision_range"]
+
+        # Generate random personalities for all new agents
+        pers = random_personality(n)
+        self.personality_openness[indices] = pers["openness"]
+        self.personality_conscientiousness[indices] = pers["conscientiousness"]
+        self.personality_extraversion[indices] = pers["extraversion"]
+        self.personality_agreeableness[indices] = pers["agreeableness"]
+        self.personality_neuroticism[indices] = pers["neuroticism"]
+
         ids = np.arange(self._next_id, self._next_id + n, dtype=np.int32)
         self.agent_ids[indices] = ids
         self._next_id += n
@@ -124,6 +177,8 @@ class AgentState:
         energy: float,
         parent_id: int,
         generation: int,
+        genome: dict,
+        personality: dict,
     ) -> int:
         agent_id = self._next_id
         self._next_id += 1
@@ -138,7 +193,78 @@ class AgentState:
         self.parent_ids[idx] = parent_id
         self.generation[idx] = generation
         self.agent_ids[idx] = agent_id
+
+        # Assign genome
+        self.genome_speed[idx] = genome["speed"]
+        self.genome_metabolism[idx] = genome["metabolism"]
+        self.genome_fertility[idx] = genome["fertility"]
+        self.genome_resilience[idx] = genome["resilience"]
+        self.genome_aggression[idx] = genome["aggression"]
+        self.genome_intelligence[idx] = genome["intelligence"]
+        self.genome_size[idx] = genome["size"]
+        self.genome_vision[idx] = genome["vision_range"]
+
+        # Assign personality
+        self.personality_openness[idx] = personality["openness"]
+        self.personality_conscientiousness[idx] = personality["conscientiousness"]
+        self.personality_extraversion[idx] = personality["extraversion"]
+        self.personality_agreeableness[idx] = personality["agreeableness"]
+        self.personality_neuroticism[idx] = personality["neuroticism"]
         return agent_id
+
+    # ------------------------------------------------------------------
+    # Genome / Personality accessors
+    # ------------------------------------------------------------------
+
+    def get_agent_genome(self, idx: int) -> dict:
+        """Return genome dict for a single agent slot."""
+        return {
+            "speed": float(self.genome_speed[idx]),
+            "metabolism": float(self.genome_metabolism[idx]),
+            "fertility": float(self.genome_fertility[idx]),
+            "resilience": float(self.genome_resilience[idx]),
+            "aggression": float(self.genome_aggression[idx]),
+            "intelligence": float(self.genome_intelligence[idx]),
+            "size": float(self.genome_size[idx]),
+            "vision_range": int(self.genome_vision[idx]),
+        }
+
+    def get_agent_personality(self, idx: int) -> dict:
+        """Return personality dict for a single agent slot."""
+        return {
+            "openness": float(self.personality_openness[idx]),
+            "conscientiousness": float(self.personality_conscientiousness[idx]),
+            "extraversion": float(self.personality_extraversion[idx]),
+            "agreeableness": float(self.personality_agreeableness[idx]),
+            "neuroticism": float(self.personality_neuroticism[idx]),
+        }
+
+    def get_genome_diversity(self) -> float:
+        """Return average std-dev across all genome arrays for alive agents.
+
+        A higher value indicates more genetic diversity in the population.
+        Only float genes are included (vision_range excluded).
+        """
+        alive = self.alive
+        if alive.sum() < 2:
+            return 0.0
+        float_genes = [
+            self.genome_speed,
+            self.genome_metabolism,
+            self.genome_fertility,
+            self.genome_resilience,
+            self.genome_aggression,
+            self.genome_intelligence,
+            self.genome_size,
+        ]
+        std_devs = []
+        for gene in float_genes:
+            alive_values = gene[alive]
+            if len(alive_values) >= 2:
+                std_devs.append(float(np.std(alive_values)))
+        if not std_devs:
+            return 0.0
+        return float(np.mean(std_devs))
 
     # ------------------------------------------------------------------
     # Killing
@@ -170,10 +296,16 @@ class AgentState:
         ) % world_height
 
     def tick_energy(self, energy_cost: float = 0.5) -> None:
-        """Decrease energy for all alive agents."""
+        """Decrease energy for all alive agents.
+
+        Energy drain is modulated by genome_metabolism:
+        higher metabolism = faster energy drain.
+        """
         alive_mask = self.alive
+        # metabolism in [0,1]: multiplier [0.7, 1.3]
+        metabolism_multiplier = 0.7 + 0.6 * self.genome_metabolism[alive_mask]
         self.energy[alive_mask] = np.maximum(
-            self.energy[alive_mask] - energy_cost, 0.0
+            self.energy[alive_mask] - energy_cost * metabolism_multiplier, 0.0
         )
 
     def tick_hunger(self, hunger_gain: float = 0.3) -> None:
@@ -186,11 +318,20 @@ class AgentState:
     def check_deaths(self) -> int:
         """Kill agents whose energy <= 0.
 
+        Genome resilience delays death: resilient agents survive slightly
+        longer after energy hits zero (they get a small energy buffer).
+
         Returns the number killed.
         """
-        starved = self.alive & (self.energy <= 0.0)
+        alive_mask = self.alive
+        # Resilience gives a bonus: energy must drop below -resilience*10
+        resilience_buffer = 10.0 * self.genome_resilience[alive_mask]
+        starved = self.energy[alive_mask] <= -resilience_buffer
         n = int(starved.sum())
-        self.alive[starved] = False
+        self.alive[alive_mask.copy()[np.flatnonzero(alive_mask)[starved]]] = False
+        # Simpler: compute which alive indices are starved
+        alive_indices = np.flatnonzero(alive_mask)
+        self.alive[alive_indices[starved]] = False
         return n
 
     def reproduce(
@@ -201,7 +342,10 @@ class AgentState:
     ) -> int:
         """Agents above *energy_threshold* spawn one offspring nearby.
 
-        Parent loses half its energy.  Offspring starts with that energy.
+        Parent loses half its energy. Offspring starts with that energy.
+        Offspring inherits crossed-over genome from two random parents,
+        with mutation applied.
+
         Fully vectorised.
 
         Returns number of offspring created.
@@ -221,6 +365,55 @@ class AgentState:
 
         parent_indices = parent_indices[:n_offspring]
         child_indices = free_indices[:n_offspring]
+
+        # Select crossover partners: pair each parent with the next one (wrapping)
+        partner_indices = parent_indices[(np.arange(n_offspring) + 1) % n_offspring]
+
+        # Crossover: for each gene, randomly pick from parent or partner
+        genes = ["speed", "metabolism", "fertility", "resilience",
+                 "aggression", "intelligence", "size"]
+        gene_attrs = [
+            "genome_speed", "genome_metabolism", "genome_fertility",
+            "genome_resilience", "genome_aggression", "genome_intelligence", "genome_size",
+        ]
+
+        for attr in gene_attrs:
+            parent_values = getattr(self, attr)[parent_indices]
+            partner_values = getattr(self, attr)[partner_indices]
+            # Random boolean mask: True = take from parent, False = from partner
+            allele_choice = np.random.random(n_offspring) < 0.5
+            child_genome = np.where(allele_choice, parent_values, partner_values)
+
+            # Apply mutation: ~5% chance per gene, magnitude ~10%
+            mutation_mask = np.random.random(n_offspring) < 0.05
+            mutation_delta = np.random.uniform(-0.1, 0.1, n_offspring)
+            child_genome = np.where(mutation_mask, 
+                                    np.clip(child_genome + mutation_delta, 0.0, 1.0),
+                                    child_genome)
+
+            getattr(self, attr)[child_indices] = child_genome
+
+        # Vision range crossover (integer gene)
+        p1_vision = self.genome_vision[parent_indices]
+        p2_vision = self.genome_vision[partner_indices]
+        child_vision = np.where(np.random.random(n_offspring) < 0.5, p1_vision, p2_vision)
+        # Small chance of vision mutation (±1)
+        vision_mutate = np.random.random(n_offspring) < 0.05
+        child_vision = np.where(vision_mutate,
+                                np.clip(child_vision + np.random.randint(-1, 2, n_offspring), 1, 10),
+                                child_vision)
+        self.genome_vision[child_indices] = child_vision
+
+        # Personality inheritance (average of parents + small noise)
+        p_traits = ["personality_openness", "personality_conscientiousness",
+                     "personality_extraversion", "personality_agreeableness",
+                     "personality_neuroticism"]
+        for trait_attr in p_traits:
+            p1_vals = getattr(self, trait_attr)[parent_indices]
+            p2_vals = getattr(self, trait_attr)[partner_indices]
+            child_vals = 0.5 * (p1_vals + p2_vals)
+            child_vals = np.clip(child_vals + np.random.normal(0, 0.05, n_offspring), 0.0, 1.0)
+            getattr(self, trait_attr)[child_indices] = child_vals
 
         # Parents lose half energy and hunger increases
         self.energy[parent_indices] *= 0.5
