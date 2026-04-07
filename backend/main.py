@@ -15,6 +15,7 @@ from backend.simulation.engine import SimulationEngine
 from backend.api.simulation_api import router as simulation_router, init_router, set_session_manager
 from backend.api.gpu import router as gpu_router, init_gpu_router
 from backend.api.sessions_api import router as sessions_router, init_sessions_router
+from backend.api.push import router as push_router
 from backend.api.interact_ws import websocket_endpoint_interact
 from backend.websocket.simulation_ws import websocket_endpoint_simulation
 from backend.websocket.gpu_ws import websocket_endpoint_gpu
@@ -59,6 +60,10 @@ async def lifespan(app: FastAPI):
     set_session_manager(session_manager)
     init_sessions_router(session_manager)
 
+    # Initialize push notification subsystem
+    from backend.api.push import init_push as init_push_subsystem
+    init_push_subsystem(db_path, getattr(Settings, 'initial_population', 1000))
+
     yield  # Server is running
 
     # Shutdown
@@ -92,6 +97,7 @@ templates = Jinja2Templates(directory=str(_project_root / "frontend" / "template
 app.include_router(simulation_router)
 app.include_router(gpu_router)
 app.include_router(sessions_router)
+app.include_router(push_router)
 
 
 @app.get("/ws/simulation")

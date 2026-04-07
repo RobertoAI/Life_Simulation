@@ -191,3 +191,94 @@ def batch_save_simulation_metrics(db_path: str, metrics_batch: list[dict]) -> in
     except Exception as e:
         logger.warning(f"Failed to batch save {len(metrics_batch)} metric rows: {e}")
         return 0
+
+
+# ------------------------------------------------------------------
+# Push notification subscription helpers
+# ------------------------------------------------------------------
+
+
+def save_push_subscription(db_path: str, subscription: dict) -> bool:
+    """Save or update a push subscription.
+
+    Args:
+        db_path: Path to the SQLite database file.
+        subscription: Dict with keys: endpoint, p256dh_key, auth_key, id (UUID).
+
+    Returns:
+        True if saved successfully, False on error.
+    """
+    try:
+        with _write_lock:
+            conn = sqlite3.connect(db_path)
+            try:
+                conn.execute("PRAGMA journal_mode=WAL;")
+                conn.execute(
+                    """INSERT OR REPLACE INTO push_subscriptions
+                       (id, endpoint, p256dh_key, auth_key, active)
+                       VALUES (?, ?, ?, ?, 1)""",
+                    (
+                        subscription.get("id"),
+                        subscription.get("endpoint"),
+                        subscription.get("p256dh_key"),
+                        subscription.get("auth_key"),
+                    ),
+                )
+                conn.commit()
+                return True
+            finally:
+                conn.close()
+    except Exception as e:
+        logger.warning(f"Failed to save push subscription: {e}")
+        return False
+
+
+def remove_push_subscription(db_path: str, subscription_id: str) -> bool:
+    """Deactivate (soft-delete) a push subscription.
+
+    Args:
+        db_path: Path to the SQLite database file.
+        subscription_id: The subscription UUID to remove.
+
+    Returns:
+        True if removed, False on error.
+    """
+    try:
+        with _write_lock:
+            conn = sqlite3.connect(db_path)
+            try:
+                conn.execute("PRAGMA journal_mode=WAL;")
+                conn.execute(
+                    "UPDATE push_subscriptions SET active = 0 WHERE id = ?",
+                    (subscription_id,),
+                )
+                conn.commit()
+                return True
+            finally:
+                conn.close()
+    except Exception as e:
+        logger.warning(f"Failed to remove push subscription {subscription_id}: {e}")
+        return False
+
+
+def get_all_active_subscriptions(db_path: str) -> list[dict]:
+    """Retrieve all active push subscriptions.
+
+    Args:
+        db_path: Path to the SQLite database file.
+
+    Returns:
+        List of dicts with keys: id, endpoint, p256dh_key, auth_key.
+    """
+    try:
+        conn = get_connection(db_path)
+        try:
+            rows = conn.execute(
+                "SELECT id, endpoint, p256dh_key, auth_key FROM push_subscriptions WHERE active = 1"
+            ).fetchall()
+            return [dict(r) for r in rows]
+        finally:
+            conn.close()
+    except Exception as e:
+        logger.warning(f"Failed to get active push subscriptions: {e}")
+        return []

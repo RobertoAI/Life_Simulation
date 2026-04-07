@@ -478,6 +478,9 @@ class SimulationEngine:
         if len(self.tick_history) > 1000:
             self.tick_history = self.tick_history[-1000:]
 
+        # Check notification triggers
+        self._check_notification_triggers(post_alive_count, len(balance_events))
+
         return metrics
 
     async def run_loop(self) -> None:
@@ -722,4 +725,99 @@ class SimulationEngine:
             # Re-apply remaining overrides after revert
             self._apply_balance_overrides()
         return result
+
+    # ------------------------------------------------------------------
+    # Notification triggers
+    # ------------------------------------------------------------------
+
+    def _check_notification_triggers(
+        self, population: int, balance_event_count: int
+    ) -> None:
+        """Check conditions and send push notifications with rate limiting.
+
+        Called once per tick. Uses rate limiting per event type: max 1 per
+        5 minutes.
+        """
+        try:
+            from backend.api.push import send_notification
+
+            now = time.time()
+            rate_window = 300  # 5 minutes
+
+            if not hasattr(self, "_notif_last_times"):
+                self._notif_last_times: dict[str, float] = {}
+
+            initial_pop = self.auto_balancer._initial_population if hasattr(self, "auto_balancer") else self._original_max_agents
+
+            # 1. Ecosystem collapsing: population < 10% of starting
+            last = self._notif_last_times.get("ecosystem_collapse", 0)
+            if population < initial_pop * 0.10 and (now - last) >= rate_window:
+                self._notif_last_times["ecosystem_collapse"] = now
+                asyncio.create_task(
+                    send_notification(
+                        "ecosystem_collapse",
+                        "Ecosystem collapsing!",
+                        f"Population: {population}",
+                    )
+                )
+
+            # 2. Population surge: population > 90% of max
+            if population > self._config.max_agents * 0.90:
+                last = self._notif_last_times.get("population_surge", 0)
+                if (now - last) >= rate_window:
+                    self._notif_last_times["population_surge"] = now
+                    asyncio.create_task(
+                        send_notification(
+                            "population_surge",
+                            "Population surge!",
+                            f"{population} agents",
+                        )
+                    )
+
+            # 3. GPU temperature critical: > 85C
+            # Try to read temperature from gpu_history in DB as fallback
+            if hasattr(self, "_config") and hasattr(self._config, "db_path"):
+                try:
+                    from backend.database.db import get_connection, get_db_path
+                    from backend.main import gpu_monitor
+                    temp: float | None = None
+                    if gpu_monitor is not None and hasattr(gpu_monitor, "get_latest"):
+                        latest = gpu_monitor.get_latest()
+                        if latest:
+                            temp = latest.get("temperature")
+                    if temp and temp > 85:
+                        last = self._notif_last_times.get("gpu_temperature", 0)
+                        if (now - last) >= rate_window:
+                            self._notif_last_times["gpu_temperature"] = now
+                            asyncio.create_task(
+                                send_notification(
+                                    "gpu_temperature",
+                                    "GPU temperature critical!",
+                                    f"GPU temperature: {temp}C",
+                                )
+                            )
+                except Exception:
+                    pass  # Gracefully degrade
+
+            # 4. Auto-balance adjustment made
+            if balance_event_count > 0:
+                last = self._notif_last_times.get("auto_balance", 0)
+                if (now - last) >= rate_window:
+                    self._notif_last_times["auto_balance"] = now
+                    # balance_event_count at this point is actually the count (int)
+                    # We'll just report that an adjustment was made
+                    asyncio.create_task(
+                        send_notification(
+                            "auto_balance",
+                            "Auto-balance adjustment",
+                            f"Simulation parameters adjusted to stabilize ecosystem",
+                        )
+                    )
+
+        except Exception:
+            # Notification system must never crash the simulation
+            import logging
+            logging.getLogger(__name__).warning(
+                "Failed to check notification triggers", exc_info=True
+            )
 

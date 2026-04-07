@@ -93,8 +93,140 @@
         <div id="settings-message" class="message" style="display:none;"></div>
     </form>
 </div>
+
+<!-- Push Notifications Section -->
+<div id="push-section" class="settings-container" style="margin-top: 2rem;">
+    <h2>Push Notifications</h2>
+    <p class="subtitle">Receive real-time alerts about your simulation.</p>
+
+    <div class="setting-card" style="margin-bottom: 1.5rem;">
+        <h3>Enable Push Notifications</h3>
+        <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 1rem;">
+            <label class="toggle-switch">
+                <input type="checkbox" id="push-enabled-toggle" onchange="togglePushNotifications(this.checked)">
+                <span class="toggle-slider"></span>
+            </label>
+            <span>Enable Push Notifications</span>
+        </div>
+        <div id="push-status" style="padding: 8px; border-radius: 4px;">
+            Checking notification status...
+        </div>
+        <div style="display: flex; gap: 10px; margin-top: 1rem;">
+            <button type="button" class="btn-primary" id="subscribe-btn" onclick="window.pushManager.subscribeToPush().then(r => { if(!r.ok) showMessage('Subscribe failed: ' + r.error, 'error'); })">
+                Subscribe
+            </button>
+            <button type="button" class="btn-secondary" id="unsubscribe-btn" onclick="window.pushManager.unsubscribeFromPush().then(r => { if(!r.ok) showMessage('Unsubscribe failed: ' + r.error, 'error'); })" style="display: none;">
+                Unsubscribe
+            </button>
+            <button type="button" class="btn-secondary" id="test-push-btn" onclick="window.pushManager.sendTestNotification()" disabled>
+                Test Notification
+            </button>
+        </div>
+    </div>
+
+    <div class="setting-card">
+        <h3>Notification Types</h3>
+        <p class="hint">Choose which events trigger push notifications.</p>
+        <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 12px;">
+            <label class="checkbox-label">
+                <input type="checkbox" id="notif-ecosystem_collapse" checked
+                    onchange="window.pushManager && (window.pushManager.notificationTypes.ecosystem_collapse = this.checked); if(window.pushManager) window.pushManager.saveNotificationPreferences();">
+                <span>Ecosystem Collapse -- Population drops below 10%</span>
+            </label>
+            <label class="checkbox-label">
+                <input type="checkbox" id="notif-population_surge" checked
+                    onchange="window.pushManager && (window.pushManager.notificationTypes.population_surge = this.checked); if(window.pushManager) window.pushManager.saveNotificationPreferences();">
+                <span>Population Surge -- Population exceeds 90% max</span>
+            </label>
+            <label class="checkbox-label">
+                <input type="checkbox" id="notif-gpu_temperature" checked
+                    onchange="window.pushManager && (window.pushManager.notificationTypes.gpu_temperature = this.checked); if(window.pushManager) window.pushManager.saveNotificationPreferences();">
+                <span>GPU Temperature -- Temperature exceeds 85C</span>
+            </label>
+            <label class="checkbox-label">
+                <input type="checkbox" id="notif-auto_balance" checked
+                    onchange="window.pushManager && (window.pushManager.notificationTypes.auto_balance = this.checked); if(window.pushManager) window.pushManager.saveNotificationPreferences();">
+                <span>Auto-Balance Events -- Simulation parameters adjusted</span>
+            </label>
+            <label class="checkbox-label">
+                <input type="checkbox" id="notif-stress_test" checked
+                    onchange="window.pushManager && (window.pushManager.notificationTypes.stress_test = this.checked); if(window.pushManager) window.pushManager.saveNotificationPreferences();">
+                <span>Stress Test Completed</span>
+            </label>
+        </div>
+    </div>
+</div>
+
+<style>
+.toggle-switch {
+    position: relative;
+    display: inline-block;
+    width: 44px;
+    height: 24px;
+}
+.toggle-switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+.toggle-slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background-color: #555;
+    border-radius: 24px;
+    transition: 0.2s;
+}
+.toggle-slider:before {
+    position: absolute;
+    content: "";
+    height: 18px;
+    width: 18px;
+    left: 3px;
+    bottom: 3px;
+    background-color: white;
+    border-radius: 50%;
+    transition: 0.2s;
+}
+.toggle-switch input:checked + .toggle-slider {
+    background-color: #4CAF50;
+}
+.toggle-switch input:checked + .toggle-slider:before {
+    transform: translateX(20px);
+}
+.checkbox-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    font-size: 14px;
+}
+.checkbox-label input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    accent-color: #4CAF50;
+}
+#push-status {
+    font-size: 14px;
+    padding: 8px 12px;
+    background: rgba(255,255,255,0.03);
+    border-radius: 4px;
+    border: 1px solid rgba(255,255,255,0.1);
+}
+</style>
 {% endblock %}
 
 {% block scripts %}
 <script src="/static/js/settings.js"></script>
+<script src="/static/js/push-notifications.js"></script>
+<script>
+// Toggle push notifications on/off
+function togglePushNotifications(enabled) {
+    localStorage.setItem('push_notifications_enabled', String(enabled));
+    if (window.pushManager) {
+        window.pushManager.pushEnabled = enabled;
+        window.pushManager.updateSettingsUI();
+    }
+}
+</script>
 {% endblock %}
