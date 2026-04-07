@@ -13,6 +13,7 @@ let wsClient = null;
 let showHeatmap = false;
 let currentTerrain = null;
 let currentResources = null;
+let agentCanvas = null;
 
 document.addEventListener('DOMContentLoaded', () => {
     const canvas = document.getElementById('world-canvas');
@@ -20,8 +21,19 @@ document.addEventListener('DOMContentLoaded', () => {
     const statusText = document.getElementById('status-text');
     const tickEl = document.getElementById('tick-count');
     const speedEl = document.getElementById('speed-value');
+    const agentCountEl = document.getElementById('agent-count');
 
     if (!canvas) return;  // Safety check
+
+    // Create overlay canvas for agents
+    agentCanvas = document.createElement('canvas');
+    agentCanvas.id = 'agent-overlay';
+    agentCanvas.style.cssText = 'position:absolute; top:0; left:0; pointer-events:none;';
+    const container = canvas.parentElement;
+    if (container) {
+        container.style.position = 'relative';
+        container.appendChild(agentCanvas);
+    }
 
     // Load initial map data from REST API
     loadInitialMap(canvas);
@@ -37,6 +49,14 @@ document.addEventListener('DOMContentLoaded', () => {
             statusText.textContent = data.data.status;
             tickEl.textContent = data.data.tick;
             speedEl.textContent = data.data.speed + 'x';
+        }
+
+        // If agents array is in the payload, render them on the overlay
+        if (data.agents) {
+            renderAgents(agentCanvas, data.agents, CONFIG.width, CONFIG.height);
+            if (agentCountEl) {
+                agentCountEl.textContent = data.agents.length;
+            }
         }
 
         // If terrain data is in the payload, render it
