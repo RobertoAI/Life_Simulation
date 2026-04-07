@@ -2,7 +2,14 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5, user-scalable=yes">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="theme-color" content="#1a1a2e">
+    <meta name="description" content="Real-time AI Life Simulation with evolving agents, dynamic ecosystems, and GPU-accelerated analytics.">
+    <link rel="manifest" href="/manifest.json">
+    <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
     <title>{% block title %}AI Life Simulator{% endblock %}</title>
     <link rel="manifest" href="/manifest.json">
     <meta name="theme-color" content="#0d1117">
@@ -10,27 +17,37 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <link rel="apple-touch-icon" href="/static/icons/icon.svg">
     <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="stylesheet" href="/static/css/mobile-optimizations.css">
+    <link rel="stylesheet" href="/static/css/accessibility.css">
     {% block head_extra %}{% endblock %}
 </head>
-<body data-page="{{ request.url.path }}">
-    <header>
+<body data-page="{{ request.url.path if request else '/' }}" class="bottom-safe-area" role="document">
+    <header role="banner">
         <h1>AI Life Simulator</h1>
-        <nav>
-            <a href="/" {% if request.url.path == '/' %}class="active"{% endif %}>Home</a>
-            <a href="/simulation" {% if request.url.path == '/simulation' %}class="active"{% endif %}>Simulation</a>
-            <a href="/agents">Agents</a>
-            <a href="/gpu">GPU</a>
-            <a href="/analytics">Analytics</a>
-            <a href="/stress-test">Stress Test</a>
-            <a href="/settings">Settings</a>
+        <nav role="navigation" aria-label="Main navigation">
+            <a href="/" {% if request.url.path == '/' %}class="active" aria-current="page"{% endif %}>Home</a>
+            <a href="/simulation" {% if request.url.path == '/simulation' %}class="active" aria-current="page"{% endif %}>Simulation</a>
+            <a href="/agents" {% if request.url.path == '/agents' %}class="active" aria-current="page"{% endif %}>Agents</a>
+            <a href="/gpu" {% if request.url.path == '/gpu' %}class="active" aria-current="page"{% endif %}>GPU</a>
+            <a href="/analytics" {% if request.url.path == '/analytics' %}class="active" aria-current="page"{% endif %}>Analytics</a>
+            <a href="/stress-test" {% if request.url.path == '/stress-test' %}class="active" aria-current="page"{% endif %}>Stress Test</a>
+            <a href="/settings" {% if request.url.path == '/settings' %}class="active" aria-current="page"{% endif %}>Settings</a>
         </nav>
+        <!-- Accessibility toolbar -->
+        <div class="accessibility-toolbar" role="toolbar" aria-label="Accessibility options">
+            <button id="toggle-contrast" class="accessibility-btn" aria-label="Toggle high contrast mode" title="High contrast">&amp;#127761;</button>
+            <button id="toggle-large-text" class="accessibility-btn" aria-label="Toggle large text mode" title="Large text">&amp;#x1F520;</button>
+            <button id="toggle-motion" class="accessibility-btn" aria-label="Toggle reduced motion" title="Reduced motion">&amp;#x1F6AB;</button>
+        </div>
     </header>
 
-    <main>
+    <main role="main" aria-live="polite" aria-atomic="false">
         {% block content %}{% endblock %}
+        <!-- Live status region for screen readers -->
+        <div id="live-status" class="sr-only" aria-live="assertive" aria-atomic="true" role="status"></div>
     </main>
 
-    <footer>
+    <footer role="contentinfo">
         <p>&copy; 2025 AI Life Simulator - Roberto Pagano</p>
     </footer>
 
@@ -38,5 +55,16 @@
     <script src="/static/js/mobile-nav.js" defer></script>
     <script src="/static/sw-register.js" defer></script>
     {% block scripts %}{% endblock %}
+    <script src="/static/js/touch-gestures.js" defer></script>
+    <script>
+    // Register service worker
+    if ('serviceWorker' in navigator) {
+        window.addEventListener('load', function() {
+            navigator.serviceWorker.register('/sw.js').catch(function(err) {
+                console.log('ServiceWorker registration failed:', err);
+            });
+        });
+    }
+    </script>
 </body>
 </html>
