@@ -140,8 +140,7 @@ class World:
                 humid_map[terrain_id] + variation, 0.0, 1.0
             ).astype(np.float32)
 
-    @staticmethod
-    def _gaussian_blur(arr: np.ndarray, kernel: int = 3) -> np.ndarray:
+    def _gaussian_blur(self, arr: np.ndarray, kernel: int = 3) -> np.ndarray:
         """Apply a simple box blur as approximation of Gaussian blur."""
         k = kernel
         pad = k // 2
@@ -153,3 +152,225 @@ class World:
                     padded[i : i + k, j : j + k]
                 )
         return result
+
+    def get_terrain_distribution(self) -> dict:
+        """Return the distribution of terrain types as percentages.
+
+        Returns:
+            Dict mapping terrain type name to percentage (0-100).
+        """
+        total = self.width * self.height
+        counts = np.bincount(self.grid.ravel(), minlength=5)
+        return {
+            name: float(counts[tid]) / total * 100.0
+            for tid, name in self.TERRAIN_TYPES.items()
+        }
+
+    # --- Environmental stress and agent query methods ---
+
+    def compute_agent_environmental_stress(
+        self,
+        positions_x: np.ndarray,
+        positions_y: np.ndarray,
+        temperature_grid: np.ndarray,
+        humidity_grid: np.ndarray,
+    ) -> np.ndarray:
+        """Compute environmental stress for each agent position (0-1).
+
+        Stress sources:
+        - Too hot: temperature (0-1 scale mapped to -10..50C) above ~35C
+        - Too cold: temperature below ~5C
+        - Too dry: humidity below 0.2 (20%)
+
+        Args:
+            positions_x: X coordinates of agents (1D array).
+            positions_y: Y coordinates of agents (1D array).
+            temperature_grid: 2D temperature grid (0-1 scale).
+            humidity_grid: 2D humidity grid (0-1 scale).
+
+        Returns:
+            1D array of stress values (0-1) per agent.
+        """
+        # Clamp positions to valid range
+        px = np.clip(positions_x, 0, self.width - 1).astype(np.int32)
+        py = np.clip(positions_y, 0, self.height - 1).astype(np.int32)
+
+        # Sample temperature and humidity at agent positions
+        temp_at_pos = temperature_grid[px, py].astype(np.float32)
+        humid_at_pos = humidity_grid[px, py].astype(np.float32)
+
+        # Map temperature from 0-1 to Celsius: -10 to 50
+        temp_celsius = temp_at_pos * 60.0 - 10.0
+
+        stress = np.zeros(len(positions_x), dtype=np.float32)
+
+        # Heat stress (>35C: linear ramp to max at 50C)
+        heat_mask = temp_celsius > 35.0
+        heat_stress = np.minimum((temp_celsius - 35.0) / 15.0, 1.0)
+        stress[heat_mask] = heat_stress[heat_mask]
+
+        # Cold stress (<5C: linear ramp to max at -10C)
+        cold_mask = temp_celsius < 5.0
+        cold_stress = np.minimum((5.0 - temp_celsius) / 15.0, 1.0)
+        cold_stress_idx = np.maximum(stress, cold_stress)
+        stress = np.where(cold_mask, cold_stress_idx, stress)
+
+        # Drought stress (humidity < 0.2: linear ramp to max at 0)
+        dry_mask = humid_at_pos < 0.2
+        dry_stress = np.maximum(0.0, 1.0 - humid_at_pos / 0.2)
+        dry_stress[dry_mask == False] = 0.0
+
+        # Combine: take the maximum of heat/cold stress and dry stress
+        stress = np.maximum(stress, dry_stress)
+
+        return np.clip(stress, 0.0, 1.0)
+
+    def get_resource_at_positions(
+        self, positions_x: np.ndarray, positions_y: np.ndarray
+    ) -> np.ndarray:
+        """Return resource values at given agent positions.
+
+        Args:
+            positions_x: X coordinates of agents (1D array).
+            positions_y: Y coordinates of agents (1D array).
+
+        Returns:
+            1D array of resource values at each position.
+        """
+        px = np.clip(positions_x, 0, self.width - 1).astype(np.int32)
+        py = np.clip(positions_y, 0, self.height - 1).astype(np.int32)
+        return self.resources[px, py].copy()
+
+    def get_nearest_agents(
+        self,
+        positions_x: np.ndarray,
+        positions_y: np.ndarray,
+        radius: float,
+        world_width: float,
+        world_height: float,
+    ) -> np.ndarray:
+        """Find which agents are within radius of each other.
+
+        Uses pairwise distance for a fully vectorized approach.
+
+        Args:
+            positions_x: X coordinates of agents (1D array, shape (N,)).
+            positions_y: Y coordinates of agents (1D array, shape (N,)).
+            radius: Maximum distance for "nearby" classification.
+            world_width: World width for distance normalization (unused, kept for API compat).
+            world_height: World height for distance normalization (unused, kept for API compat).
+
+        Returns:
+            Boolean matrix of shape (N, N) where True[i,j] means agent j
+            is within radius of agent i. Diagonal is excluded (self).
+        """
+        n = len(positions_x)
+        if n == 0:
+            return np.zeros((0, 0), dtype=bool)
+
+        # Compute pairwise distances using broadcasting
+        dx = positions_x[np.newaxis, :] - positions_x[:, np.newaxis]
+        dy = positions_y[np.newaxis, :] - positions_y[:, np.newaxis]
+        dist = np.sqrt(dx.astype(np.float32) ** 2 + dy.astype(np.float32) ** 2)
+
+        within = dist <= radius
+
+        # Exclude self
+        np.fill_diagonal(within, False)
+
+        return within
+
+    def get_threat_map(self) -> np.ndarray:
+        """Return a 2D array where threatening cells are marked.
+
+        A cell is threatening if:
+        - Resources are very low (<0.15)
+        - Temperature is extreme (>0.85 or <0.1, roughly >41C or <-4C in our mapping)
+
+        Returns:
+            2D int array of shape (width, height):
+            0 = safe, 1 = low resources, 2 = extreme temperature, 3 = both.
+        """
+        threat = np.zeros((self.width, self.height), dtype=np.int8)
+
+        low_resource = self.resources < 0.15
+        extreme_temp = (self.temperature > 0.85) | (self.temperature < 0.1)
+
+        threat[low_resource] = 1
+        threat[extreme_temp] |= 2
+
+        return threat
+
+    def apply_event_effects_to_agents(
+        self,
+        events: list,
+        positions_x: np.ndarray,
+        positions_y: np.ndarray,
+        resilience: np.ndarray,
+    ) -> tuple:
+        """Compute event-based penalties for agents in event areas.
+
+        Agents in event zones take energy and health penalties,
+        mitigated by their resilience (0-1, where 1 = fully resistant).
+
+        Args:
+            events: List of ActiveEvent objects.
+            positions_x: X coordinates of agents (1D array).
+            positions_y: Y coordinates of agents (1D array).
+            resilience: 1D array of resilience values (0-1) per agent.
+
+        Returns:
+            Tuple of (energy_penalty, health_penalty) as 1D arrays.
+        """
+        energy_penalty = np.zeros(len(positions_x), dtype=np.float32)
+        health_penalty = np.zeros(len(positions_x), dtype=np.float32)
+
+        if len(positions_x) == 0:
+            return energy_penalty, health_penalty
+
+        px = positions_x.astype(np.int32)
+        py = positions_y.astype(np.int32)
+
+        # Penalty scales based on event type
+        event_severity_map = {
+            "storm": {"energy": 3.0, "health": 2.0},
+            "drought": {"energy": 5.0, "health": 4.0},
+            "cold_wave": {"energy": 6.0, "health": 5.0},
+            "heat_wave": {"energy": 6.0, "health": 5.0},
+            "earthquake": {"energy": 4.0, "health": 6.0},
+            "abundance": {"energy": -1.0, "health": 1.0},  # abundance gives energy
+        }
+
+        for event in events:
+            # Handle both ActiveEvent objects and dicts (from get_active_events)
+            if isinstance(event, dict):
+                center_x = event["center_x"]
+                center_y = event["center_y"]
+                radius = event["radius"]
+                severity_factor = event["severity"]
+                event_type = event["type"]
+            else:
+                center_x = event.center_x
+                center_y = event.center_y
+                radius = event.radius
+                severity_factor = event.severity
+                event_type = event.type
+
+            # Circular area mask for each agent
+            dx = px - center_x
+            dy = py - center_y
+            dist_sq = dx.astype(np.float32) ** 2 + dy.astype(np.float32) ** 2
+            in_event = dist_sq <= radius ** 2
+
+            if not np.any(in_event):
+                continue
+
+            penalties = event_severity_map.get(event_type, {"energy": 2.0, "health": 2.0})
+
+            # Penalty reduced by resilience
+            mitigation = 1.0 - resilience[in_event]
+
+            energy_penalty[in_event] += penalties["energy"] * severity_factor * mitigation
+            health_penalty[in_event] += penalties["health"] * severity_factor * mitigation
+
+        return energy_penalty, health_penalty
