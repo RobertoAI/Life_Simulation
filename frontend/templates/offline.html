@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5, user-scalable=yes">
+    <title>Offline - AI Life Simulator</title>
+    <link rel="stylesheet" href="/static/css/offline.css">
+</head>
+<body>
+    <a href="/" class="skip-link" style="position:absolute;top:-40px;left:0;background:#e94560;color:#fff;padding:0.5rem 1rem;z-index:10000;text-decoration:none;">Go to Home</a>
+    <div class="offline-container" role="main">
+        <div class="offline-icon" aria-hidden="true">&#x1F4F4;</div>
+        <h1 class="offline-title">You're Offline</h1>
+        <p class="offline-message">
+            It looks like you've lost your internet connection. Some features may not be available right now, but cached data is still accessible.
+        </p>
+
+        <!-- Last Cached Data from IndexedDB -->
+        <div id="cached-data-section" class="offline-card" role="region" aria-label="Last cached simulation data">
+            <h3>Last Known Simulation State</h3>
+            <div id="cached-data-content">
+                <div class="status-row">
+                    <span class="status-label">Loading cached data...</span>
+                    <span class="status-value"></span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Last known tick display -->
+        <div id="last-tick-section" class="last-tick-display" style="display: none;">
+            <div class="tick-label">Last Known Tick</div>
+            <div class="tick-value" id="last-tick-value">--</div>
+        </div>
+
+        <!-- Action buttons -->
+        <div class="offline-actions">
+            <button id="retry-button" class="btn-offline btn-retry" aria-label="Try to reconnect">
+                &#x1F504; Try Again
+            </button>
+            <a href="/" class="btn-offline btn-home" aria-label="Go to homepage">
+                &#x1F3E0; Go Home
+            </a>
+            <a href="/offline/install" class="btn-offline btn-install" aria-label="Install the app for offline access">
+                &#x1F4F2; Install App
+            </a>
+        </div>
+
+        <!-- Offline suggestions -->
+        <div class="offline-suggestions">
+            <h3>What you can do offline</h3>
+            <ul>
+                <li>View cached simulation data</li>
+                <li>Review last known agent statistics</li>
+                <li>Install the PWA for better offline access</li>
+            </ul>
+        </div>
+    </div>
+
+    <script>
+        // Load cached data from IndexedDB
+        async function loadCachedData() {
+            const contentEl = document.getElementById('cached-data-content');
+            const tickSection = document.getElementById('last-tick-section');
+
+            if (!window.indexedDB) {
+                contentEl.innerHTML = '<div class="status-row"><span class="status-label">IndexedDB not supported</span></div>';
+                return;
+            }
+
+            try {
+                const db = await openDB();
+                const tx = db.transaction('offline-cache', 'readonly');
+                const store = tx.objectStore('offline-cache');
+                const data = await store.get('simulation-status');
+
+                if (data) {
+                    const lastUpdated = data.timestamp ? new Date(data.timestamp).toLocaleString() : 'Unknown';
+                    contentEl.innerHTML = [
+                        '<div class="status-row"><span class="status-label">Status</span><span class="status-value">' + (data.status || 'unknown') + '</span></div>',
+                        '<div class="status-row"><span class="status-label">Last Updated</span><span class="status-value">' + lastUpdated + '</span></div>',
+                        '<div class="status-row"><span class="status-label">Tick</span><span class="status-value">' + (data.tick ?? '--') + '</span></div>',
+                        '<div class="status-row"><span class="status-label">Grid</span><span class="status-value">' + (data.grid_width ? data.grid_width + 'x' + data.grid_height : '--') + '</span></div>'
+                    ].join('');
+
+                    if (data.tick !== undefined) {
+                        tickSection.style.display = 'block';
+                        document.getElementById('last-tick-value').textContent = data.tick;
+                    }
+                } else {
+                    contentEl.innerHTML = '<div class="status-row"><span class="status-label">No cached data available</span></div>';
+                }
+            } catch (e) {
+                contentEl.innerHTML = '<div class="status-row"><span class="status-label">Could not load cached data</span></div>';
+            }
+        }
+
+        function openDB() {
+            return new Promise((resolve, reject) => {
+                const request = indexedDB.open('offline-store', 1);
+                request.onupgradeneeded = function (event) {
+                    const db = event.target.result;
+                    if (!db.objectStoreNames.contains('offline-cache')) {
+                        db.createObjectStore('offline-cache', { keyPath: 'id' });
+                    }
+                };
+                request.onsuccess = function (event) {
+                    resolve(event.target.result);
+                };
+                request.onerror = function () {
+                    reject(new Error('Failed to open IndexedDB'));
+                };
+            });
+        }
+
+        // Retry connection
+        document.getElementById('retry-button').addEventListener('click', async function () {
+            const btn = this;
+            btn.textContent = 'Connecting...';
+            btn.disabled = true;
+
+            // Check actual connectivity
+            if (navigator.onLine) {
+                try {
+                    const res = await fetch('/api/simulation/status', { method: 'HEAD' });
+                    if (res.ok) {
+                        window.location.reload();
+                        return;
+                    }
+                } catch (e) {
+                    // Still offline
+                }
+            }
+
+            // Use navigator.onLine API
+            if (navigator.onLine) {
+                window.location.reload();
+            } else {
+                btn.textContent = 'Still Offline - Try Again';
+                btn.disabled = false;
+            }
+        });
+
+        // Auto-retry when connection is restored
+        window.addEventListener('online', function () {
+            document.getElementById('retry-button').textContent = 'Reconnected - Reload';
+            setTimeout(function () {
+                window.location.reload();
+            }, 1000);
+        });
+
+        // Load cached data on page load
+        loadCachedData();
+
+        // Announce offline state for screen readers
+        var liveRegion = document.createElement('div');
+        liveRegion.setAttribute('aria-live', 'assertive');
+        liveRegion.setAttribute('role', 'status');
+        liveRegion.className = 'sr-only';
+        liveRegion.textContent = 'You are currently offline. Cached data is available.';
+        document.body.appendChild(liveRegion);
+    </script>
+</body>
+</html>

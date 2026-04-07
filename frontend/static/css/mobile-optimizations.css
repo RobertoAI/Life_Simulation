@@ -1,0 +1,271 @@
+/* Mobile UX Optimizations - 320px+ viewport support */
+
+/* Viewport constraints: prevent horizontal scroll at all sizes */
+html, body {
+    overflow-x: hidden;
+    max-width: 100vw;
+}
+
+img, canvas, svg, video {
+    max-width: 100%;
+    height: auto;
+}
+
+/* Touch target sizing: minimum 48x48px for all interactive elements */
+button,
+a,
+input[type="button"],
+input[type="submit"],
+input[type="reset"],
+label,
+[role="button"],
+.speed-btn,
+.btn,
+.btn-primary,
+.btn-secondary,
+.pagination button,
+.analytics-tab {
+    min-height: 48px;
+    min-width: 48px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* Ensure links in nav have adequate touch targets */
+header nav a {
+    padding: 0.6rem 0.8rem;
+    min-height: 48px;
+    display: inline-flex;
+    align-items: center;
+}
+
+/* Form inputs: min 16px font prevents iOS zoom on focus */
+input,
+select,
+textarea {
+    font-size: 16px !important;
+    min-height: 48px;
+    padding: 0.5rem 0.75rem;
+}
+
+.setting-field input {
+    width: 100%;
+    min-height: 48px;
+}
+
+/* Tables: horizontal scroll wrapper on small screens */
+.agents-table-container {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    max-width: 100%;
+}
+
+.agents-table {
+    min-width: 600px;
+}
+
+/* Canvas: responsive and touch-friendly */
+.canvas-container {
+    width: 100%;
+    padding: 0.5rem;
+}
+
+.canvas-container canvas {
+    width: 100% !important;
+    height: auto !important;
+    touch-action: none;
+}
+
+/* Charts: proper sizing on small screens */
+.chart-container {
+    width: 100%;
+    margin-bottom: 1rem;
+}
+
+.chart-wrapper,
+.chart-wrapper-tall {
+    position: relative;
+    width: 100%;
+    overflow: hidden;
+}
+
+.chart-wrapper canvas,
+.chart-wrapper-tall canvas {
+    width: 100% !important;
+    height: auto !important;
+}
+
+.bottom-safe-area {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    margin-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* Bottom safe area for iPhone home bar */
+footer {
+    padding-bottom: calc(1.5rem + env(safe-area-inset-bottom, 0px));
+}
+ 
+/* 320px viewport: extreme small screens */
+@media (max-width: 374px) {
+    main {
+        padding: 0.5rem 0.25rem;
+    }
+
+    header {
+        padding: 0.5rem 0.5rem;
+    }
+
+    header h1 {
+        font-size: 1.2rem;
+    }
+
+    header nav {
+        gap: 0;
+    }
+
+    header nav a {
+        padding: 0.5rem 0.4rem;
+        font-size: 0.8rem;
+    }
+
+    .cards-grid {
+        grid-template-columns: 1fr;
+        gap: 0.5rem;
+        margin-top: 0.5rem;
+    }
+
+    .card {
+        padding: 0.75rem;
+    }
+
+    .info-panel {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 0.5rem;
+    }
+
+    .info-item {
+        padding: 0.5rem;
+    }
+
+    .hero h2,
+    .hero > h2[style*="font-size"] {
+        font-size: 1.5rem !important;
+    }
+
+    .controls-row {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .left-controls,
+    .right-controls {
+        flex-wrap: wrap;
+        width: 100%;
+        justify-content: center;
+    }
+
+    .left-controls button,
+    .right-controls .speed-btn {
+        flex: 1 1 auto;
+        min-width: 0;
+        padding: 0.5rem;
+        font-size: 0.8rem;
+    }
+
+    .speed-selector {
+        flex-wrap: wrap;
+        justify-content: center;
+        width: 100%;
+    }
+
+    .speed-btn {
+        flex: 1 1 auto;
+        min-width: 0;
+    }
+
+    .gpu-metrics {
+        grid-template-columns: 1fr;
+    }
+
+    .settings-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .settings-actions {
+        flex-direction: column;
+    }
+
+    .settings-actions button {
+        width: 100%;
+    }
+
+    .analytics-tabs {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        white-space: nowrap;
+        flex-wrap: nowrap;
+    }
+
+    .analytics-tab {
+        flex-shrink: 0;
+    }
+}
+
+/* 375px-768px: typical mobile */
+@media (max-width: 768px) {
+    main {
+        padding: 1rem 0.5rem;
+    }
+
+    header {
+        padding: 0.75rem 1rem;
+    }
+
+    header h1 {
+        font-size: 1.3rem;
+    }
+
+    .cards-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .gpu-metrics {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    .settings-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .settings-actions {
+        flex-direction: column;
+    }
+
+    .settings-actions button {
+        width: 100%;
+    }
+
+    .info-panel {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 0.5rem;
+    }
+
+    .canvas-container {
+        padding: 0.5rem;
+    }
+
+    footer {
+        padding: 1rem;
+    }
+
+    /* Prevent pull-to-refresh on scroll within the app */
+    body {
+        overscroll-behavior-y: contain;
+    }
+
+    .agents-header {
+        flex-direction: column !important;
+        align-items: flex-start !important;
+    }
+}
