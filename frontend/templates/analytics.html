@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+
+{% block title %}Analytics - AI Life Simulator{% endblock %}
+
+{% block head_extra %}
+<link rel="stylesheet" href="/static/css/dashboard.css">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js" defer></script>
+<script src="/static/js/analytics.js" defer></script>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h2>Analytics Dashboard</h2>
+        <span class="subtitle">Simulation telemetry and trends</span>
+    </div>
+</div>
+
+<!-- Tab navigation -->
+<div class="analytics-tabs">
+    <button class="analytics-tab active" data-panel="panel-population">Population</button>
+    <button class="analytics-tab" data-panel="panel-birthdeath">Birth / Death</button>
+    <button class="analytics-tab" data-panel="panel-diversity">Genetic Diversity</button>
+    <button class="analytics-tab" data-panel="panel-events">Event Timeline</button>
+</div>
+
+<!-- Population Panel -->
+<div id="panel-population" class="analytics-panel active">
+    <div class="chart-container">
+        <h3>Population Over Time</h3>
+        <div class="chart-wrapper-tall">
+            <canvas id="populationChart"></canvas>
+        </div>
+    </div>
+</div>
+
+<!-- Birth/Death Panel -->
+<div id="panel-birthdeath" class="analytics-panel">
+    <div class="chart-container">
+        <h3>Birth / Death Rates</h3>
+        <div class="chart-wrapper-tall">
+            <canvas id="birthDeathChart"></canvas>
+        </div>
+    </div>
+</div>
+
+<!-- Genetic Diversity Panel -->
+<div id="panel-diversity" class="analytics-panel">
+    <div class="chart-container">
+        <h3>Genetic Diversity Index</h3>
+        <div class="chart-wrapper-tall">
+            <canvas id="diversityChart"></canvas>
+        </div>
+    </div>
+</div>
+
+<!-- Event Timeline Panel -->
+<div id="panel-events" class="analytics-panel">
+    <div class="chart-container">
+        <h3>Event Timeline</h3>
+        <div class="chart-wrapper-tall">
+            <canvas id="eventChart"></canvas>
+        </div>
+    </div>
+</div>
+{% endblock %}

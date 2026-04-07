@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+
+{% block title %}GPU Monitor - AI Life Simulator{% endblock %}
+
+{% block head_extra %}
+<link rel="stylesheet" href="/static/css/dashboard.css">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js" defer></script>
+<script src="/static/js/gpu-dashboard.js" defer></script>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h2>GPU Monitor</h2>
+        <span class="subtitle">Realtime GPU utilization, VRAM, temperature &amp; power</span>
+        <span id="wsStatus" class="ws-status disconnected">Connecting...</span>
+    </div>
+</div>
+
+<!-- Fallback mode banner -->
+<div id="fallbackBanner" class="banner banner-warning" style="display: none;">
+    &#9888; No GPU Detected - Simulated Data
+</div>
+
+<!-- GPU Info Strip -->
+<div class="gpu-info-strip">
+    <span class="gpu-name" id="gpuName">Loading...</span>
+    <span class="gpu-status">
+        <span id="wsStatusDot" class="pulse-dot green"></span>
+        Live
+    </span>
+</div>
+
+<!-- Metric Cards -->
+<div class="gpu-metrics">
+    <!-- Card 1: GPU Utilization -->
+    <div class="gpu-card">
+        <div class="card-label">GPU Utilization</div>
+        <div id="gpuUtilValue" class="card-value indicator-green">0%</div>
+        <div class="gauge-bar">
+            <div id="gpuUtilBar" class="gauge-fill green" style="width: 0%;"></div>
+        </div>
+        <div class="card-detail">Utilization percentage</div>
+    </div>
+
+    <!-- Card 2: VRAM Usage -->
+    <div class="gpu-card">
+        <div class="card-label">VRAM Usage</div>
+        <div id="gpuVramValue" class="card-value">0.0 / 32.0 GB</div>
+        <div class="gauge-bar">
+            <div id="gpuVramBar" class="gauge-fill green" style="width: 0%;"></div>
+        </div>
+        <div class="card-detail">Video memory consumption</div>
+    </div>
+
+    <!-- Card 3: Temperature -->
+    <div class="gpu-card">
+        <div class="card-label">Temperature</div>
+        <div id="gpuTempValue" class="card-value indicator-green">0°C</div>
+        <div class="card-detail">GPU core temperature</div>
+    </div>
+
+    <!-- Card 4: Power Draw -->
+    <div class="gpu-card" id="powerCard" style="display: none;">
+        <div class="card-label">Power Draw</div>
+        <div id="gpuPowerValue" class="card-value">N/A</div>
+        <div class="card-detail">Watts consumed</div>
+    </div>
+</div>
+
+<!-- GPU Utilization Chart -->
+<div class="chart-container">
+    <h3>GPU Utilization Over Time (Last 5 Minutes)</h3>
+    <div class="chart-wrapper-tall">
+        <canvas id="gpuUtilChart"></canvas>
+    </div>
+</div>
+
+<!-- VRAM Usage Chart -->
+<div class="chart-container">
+    <h3>VRAM Usage Over Time (Last 5 Minutes)</h3>
+    <div class="chart-wrapper">
+        <canvas id="vramChart"></canvas>
+    </div>
+</div>
+{% endblock %}
