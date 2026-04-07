@@ -3,6 +3,7 @@
 import asyncio
 from datetime import datetime, timezone
 
+from backend.simulation.agent_state import AgentState
 from backend.simulation.metrics import compute_tick_metrics
 from backend.simulation.world import World
 
@@ -18,6 +19,8 @@ class SimulationEngine:
         """
         self.world = World(width=config.grid_width, height=config.grid_height)
         self.world.generate()
+        self._config = config
+        self.agents = AgentState(max_capacity=config.max_agents)
         self.tick_count = 0
         self.status = "stopped"
         self.speed_multiplier = 1.0
@@ -25,11 +28,16 @@ class SimulationEngine:
         self._task: asyncio.Task | None = None
 
     async def start(self) -> None:
-        """Start the simulation, resetting tick count."""
+        """Start the simulation, resetting tick count and spawning agents."""
         if self.status == "running":
             return
         self.status = "running"
         self.tick_count = 0
+        self.agents.spawn_batch(
+            self._config.initial_population,
+            self.world.width,
+            self.world.height,
+        )
         self._task = asyncio.create_task(self.run_loop())
 
     async def stop(self) -> None:
@@ -65,6 +73,12 @@ class SimulationEngine:
             Dictionary with metrics for this tick.
         """
         self.tick_count += 1
+        # Agent tick pipeline
+        self.agents.tick_movement(self.world.width, self.world.height)
+        self.agents.tick_energy()
+        self.agents.tick_hunger()
+        self.agents.check_deaths()
+        self.agents.reproduce(self.world.width, self.world.height)
         # Regenerate world resources
         self.world.regenerate()
         # Compute and store metrics
@@ -90,7 +104,7 @@ class SimulationEngine:
         """Return current simulation status information.
 
         Returns:
-            Dictionary with tick count, status, and speed.
+            Dictionary with tick count, status, speed, and population.
         """
         return {
             "tick": self.tick_count,
@@ -98,8 +112,21 @@ class SimulationEngine:
             "speed": self.speed_multiplier,
             "grid_width": self.world.width,
             "grid_height": self.world.height,
+            "population": self.agents.active_count,
             "timestamp": datetime.now(timezone.utc).isoformat(),
         }
+
+    def get_agents_page(self, page: int = 0, per_page: int = 50) -> dict:
+        """Return a paginated view of alive agents.
+
+        Args:
+            page: Zero-based page number.
+            per_page: Number of agents per page.
+
+        Returns:
+            Dict with ``page``, ``per_page``, ``total``, ``agents``.
+        """
+        return self.agents.get_alive_agents_for_api(page=page, per_page=per_page)
 
     def get_metrics(self) -> list:
         """Return the metrics history (last 100 ticks).
