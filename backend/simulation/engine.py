@@ -11,6 +11,7 @@ from backend.simulation.decisions import decide
 from backend.simulation.metrics import compute_tick_metrics
 from backend.simulation.world import World
 from backend.simulation.engine_optimizer import SimulationProfiler
+from backend.simulation.auto_balance import AutoBalancer
 
 
 class SimulationEngine:
@@ -32,12 +33,17 @@ class SimulationEngine:
         self.speed_multiplier = 1.0
         self.metrics_history: list = []
         self._task: asyncio.Task | None = None
+        self._balance_events: list = []
+        self._balance_history: list = []
         # Track agents who chose to rest this tick (skip movement)
         self._resting_mask: np.ndarray | None = None
         # Profiler for per-phase timing
         self.profiler = SimulationProfiler()
         # Tick history: stores (tick_number, duration_ms, agent_count, births, deaths) last 1000
         self.tick_history: list = []
+
+        # Auto-Balance system
+        self.auto_balancer = AutoBalancer(config)
 
     async def start(self) -> None:
         """Start the simulation, resetting tick count and spawning agents."""
@@ -375,8 +381,23 @@ class SimulationEngine:
         # Record total tick time (was started at top of tick)
         self.profiler.end_tick()
 
+        # Phase 8: Auto-Balance check (every 50 ticks)
+        balance_events = []
+        if self.tick_count % 50 == 0:
+            balance_events = self.auto_balancer.check(self.agents, self.world, self.tick_count)
+            if balance_events:
+                self._balance_events.extend(balance_events)
+                self._balance_history.extend(balance_events)
+                # Keep only last 100 balance events in current batch
+                if len(self._balance_events) > 100:
+                    self._balance_events = self._balance_events[-100:]
+                # Apply active overrides to simulation
+                self._apply_balance_overrides()
+
         # Compute and store metrics
         metrics = compute_tick_metrics(self.world, self.tick_count)
+        metrics["balance_events"] = balance_events
+        metrics["balance_overrides"] = self.auto_balancer.get_current_config_overrides()
         self.metrics_history.append(metrics)
         if len(self.metrics_history) > 100:
             self.metrics_history = self.metrics_history[-100:]
@@ -507,3 +528,53 @@ class SimulationEngine:
             "min_tick_ms": float(np.min(durations)),
             "total_ticks": total_ticks,
         }
+
+    def _apply_balance_overrides(self) -> None:
+        """Apply active auto-balance overrides to the world and agent parameters.
+
+        This is called by the AutoBalancer to apply its adjustments.
+        """
+        overrides = self.auto_balancer.get_current_config_overrides()
+
+        # Apply regeneration multiplier by adjusting world regeneration rates
+        # The world's regenerate() will be called next tick, so we don't
+        # directly modify world resources here. Instead, the multiplier is
+        # passed to the world when regenerate() is called.
+        # For now, we store the multiplier for the world to use.
+        regen_multiplier = overrides["resource_regeneration_multiplier"]
+        if regen_multiplier != 1.0:
+            self.world._regen_multiplier = regen_multiplier
+
+        # Store metabolism and reproduction multipliers as engine-level attrs
+        self._metabolism_multiplier = overrides["metabolism_multiplier"]
+        self._reproduction_multiplier = overrides["reproduction_chance_multiplier"]
+        self._mutation_rate = overrides["mutation_rate_override"]
+
+    def get_balance_history(self) -> list:
+        """Return the full history of auto-balance adjustments.
+
+        Returns:
+            List of adjustment dicts.
+        """
+        return self.auto_balancer.get_adjustment_history()
+
+    def get_balance_config(self) -> dict:
+        """Return current auto-balance configuration overrides.
+
+        Returns:
+            Dict with current override values.
+        """
+        return self.auto_balancer.get_current_config_overrides()
+
+    def revert_last_balance_adjustment(self) -> dict | None:
+        """Revert the most recent auto-balance adjustment.
+
+        Returns:
+            Dict of the reverted adjustment, or None if nothing to revert.
+        """
+        result = self.auto_balancer.revert_last_adjustment()
+        if result is not None:
+            # Re-apply remaining overrides after revert
+            self._apply_balance_overrides()
+        return result
+
