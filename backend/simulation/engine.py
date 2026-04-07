@@ -13,6 +13,19 @@ from backend.simulation.world import World
 from backend.simulation.engine_optimizer import SimulationProfiler
 from backend.simulation.auto_balance import AutoBalancer
 
+# Optional advanced feature imports
+try:
+    from backend.simulation.agent_communication import PheromoneMap
+    PHEROMONES_AVAILABLE = True
+except ImportError:
+    PHEROMONES_AVAILABLE = False
+
+try:
+    from backend.simulation import advanced_behaviors as adv
+    ADVANCED_BEHAVIORS_AVAILABLE = True
+except ImportError:
+    ADVANCED_BEHAVIORS_AVAILABLE = False
+
 
 class SimulationEngine:
     """Main simulation engine that drives the world tick loop."""
@@ -44,6 +57,14 @@ class SimulationEngine:
 
         # Auto-Balance system
         self.auto_balancer = AutoBalancer(config)
+
+        # --- Advanced Features (opt-in, disabled by default) ---
+        self._enable_pheromones = getattr(config, "enable_pheromones", False)
+        self._enable_advanced_behaviors = getattr(config, "enable_advanced_behaviors", False)
+
+        self.pheromones = None
+        if self._enable_pheromones and PHEROMONES_AVAILABLE:
+            self.pheromones = PheromoneMap(self.world.width, self.world.height)
 
     async def start(self) -> None:
         """Start the simulation, resetting tick count and spawning agents."""
@@ -159,6 +180,16 @@ class SimulationEngine:
         n_alive = len(alive_indices)
         if n_alive > 0:
             agents.tick_movement(self.world.width, self.world.height)
+
+            # ---- Phase 1.5: Pheromone trails (after movement) ----
+            if self._enable_pheromones and self.pheromones is not None:
+                self.pheromones.deposit_pheromones(
+                    agents.position_x[alive_indices].astype(np.int32),
+                    agents.position_y[alive_indices].astype(np.int32),
+                    PheromoneMap.FOOD_FOUND,
+                    intensity=0.08,
+                )
+
         t1 = time.perf_counter()
         self.profiler.record_phase("movement", (t1 - t0) * 1000.0)
 
@@ -166,6 +197,30 @@ class SimulationEngine:
         t0 = time.perf_counter()
         if n_alive > 0:
             perception = self._compute_perception(agents)
+
+            # Augment perception with pheromone signals
+            if self._enable_pheromones and self.pheromones is not None:
+                pheromone_sense = self.pheromones.get_all_type_sense(
+                    agents.position_x[alive_indices].astype(np.int32),
+                    agents.position_y[alive_indices].astype(np.int32),
+                    radius=3,
+                )
+                perception["pheromone_food"] = pheromone_sense["food_found"]
+                perception["pheromone_danger"] = pheromone_sense["danger"]
+                perception["pheromone_mates"] = pheromone_sense["mate_signal"]
+            else:
+                perception["pheromone_food"] = np.zeros(n_alive, dtype=np.float32)
+                perception["pheromone_danger"] = np.zeros(n_alive, dtype=np.float32)
+                perception["pheromone_mates"] = np.zeros(n_alive, dtype=np.float32)
+
+            # ---- Advanced behaviors: modify perception for decisions ----
+            if self._enable_advanced_behaviors and ADVANCED_BEHAVIORS_AVAILABLE:
+                # Pack behavior: nearby mates boosted by agreeableness
+                pack_boost = agents.personality_agreeableness[alive_indices] * agents.personality_extraversion[alive_indices]
+                perception["nearby_mates"] = np.clip(
+                    perception["nearby_mates"] + 0.3 * pack_boost, 0.0, 1.0
+                )
+
             hunger = agents.hunger[alive_indices]
             energy = agents.energy[alive_indices]
             fertility = agents.genome_fertility[alive_indices]
@@ -378,6 +433,18 @@ class SimulationEngine:
         t1 = time.perf_counter()
         self.profiler.record_phase("world", (t1 - t0) * 1000.0)
 
+        # ---- Phase 8: Pheromone decay ----
+        if self._enable_pheromones and self.pheromones is not None:
+            self.pheromones.decay(decay_rate=0.05)
+
+        # ---- Phase 9: Advanced behaviors (post-decision effects) ----
+        if self._enable_advanced_behaviors and ADVANCED_BEHAVIORS_AVAILABLE and n_alive > 0:
+            try:
+                self._apply_advanced_behaviors(alive_indices)
+            except Exception:
+                # Fallback gracefully: don't crash the simulation
+                pass
+
         # Record total tick time (was started at top of tick)
         self.profiler.end_tick()
 
@@ -498,6 +565,84 @@ class SimulationEngine:
         self.profiler.reset()
         self.tick_history.clear()
         self._resting_mask = np.zeros(self._original_max_agents, dtype=bool)
+
+    # ------------------------------------------------------------------
+    # Advanced behavior integration
+    # ------------------------------------------------------------------
+
+    def _apply_advanced_behaviors(self, alive_indices: np.ndarray) -> None:
+        """Apply advanced behaviors to currently alive agents.
+
+        Called as part of the tick loop when advanced_behaviors is enabled.
+        """
+        agents = self.agents
+        w = self.world.width
+        h = self.world.height
+        ai = alive_indices
+
+        px = agents.position_x[ai].astype(np.int32)
+        py = agents.position_y[ai].astype(np.int32)
+
+        # --- Pack movement: high agreeableness + extraversion cluster ---
+        pack_mask, cx, cy = adv.compute_pack_affinity(
+            px, py,
+            agents.personality_agreeableness[ai],
+            agents.personality_extraversion[ai],
+            pack_threshold=0.65,
+        )
+        if np.any(pack_mask) and len(cx) > 0:
+            new_px, new_py = adv.apply_pack_movement(
+                agents.position_x[ai],
+                agents.position_y[ai],
+                pack_mask, cx, cy, w, h,
+                pack_strength=0.15,
+            )
+            agents.position_x[ai] = new_px
+            agents.position_y[ai] = new_py
+
+        # --- Territorial behavior: aggressive agents penalize intruders ---
+        territory_result = adv.apply_territorial_behavior(
+            px, py,
+            agents.genome_aggression[ai],
+            agents.energy[ai],
+            w, h,
+        )
+        penalties = territory_result["intruder_penalties"]
+        if np.any(penalties > 0):
+            intruders = ai[penalties > 0]
+            agents.energy[intruders] = np.maximum(
+                agents.energy[intruders] - penalties[penalties > 0], 0.0
+            )
+
+        # --- Migration: move toward better resource areas ---
+        local_res = self.world.resources[px, py]
+        mig_mask, mig_dx, mig_dy = adv.compute_migration_direction(
+            px, py, local_res, self.world.resources, w, h,
+            migration_threshold=0.15, search_range=12,
+        )
+        if np.any(mig_mask):
+            new_mx, new_my = adv.apply_migration(
+                agents.position_x[ai],
+                agents.position_y[ai],
+                mig_mask, mig_dx, mig_dy, w, h, speed=1,
+            )
+            agents.position_x[ai] = new_mx
+            agents.position_y[ai] = new_my
+
+        # --- Hibernation: rest in cold areas ---
+        local_temp = self.world.temperature[px, py]
+        hib_prob = adv.compute_hibernation_prob(
+            local_temp,
+            agents.energy[ai],
+            agents.genome_metabolism[ai],
+            cold_threshold=0.3,
+        )
+        hibernating = np.random.random(len(hib_prob)) < hib_prob
+        if np.any(hibernating):
+            hib_idx = ai[hibernating]
+            agents.energy[hib_idx] = np.clip(
+                agents.energy[hib_idx] + 2.0, 0.0, 100.0
+            )
 
     def get_stress_test_metrics(self) -> dict:
         """Return aggregated stress test metrics from tick history.
