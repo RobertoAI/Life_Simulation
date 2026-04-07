@@ -1,6 +1,7 @@
 """Simulation engine - manages the tick loop and simulation state."""
 
 import asyncio
+import time
 from datetime import datetime, timezone
 
 import numpy as np
@@ -9,6 +10,7 @@ from backend.simulation.agent_state import AgentState
 from backend.simulation.decisions import decide
 from backend.simulation.metrics import compute_tick_metrics
 from backend.simulation.world import World
+from backend.simulation.engine_optimizer import SimulationProfiler
 
 
 class SimulationEngine:
@@ -23,6 +25,7 @@ class SimulationEngine:
         self.world = World(width=config.grid_width, height=config.grid_height)
         self.world.generate()
         self._config = config
+        self._original_max_agents = config.max_agents
         self.agents = AgentState(max_capacity=config.max_agents)
         self.tick_count = 0
         self.status = "stopped"
@@ -31,6 +34,10 @@ class SimulationEngine:
         self._task: asyncio.Task | None = None
         # Track agents who chose to rest this tick (skip movement)
         self._resting_mask: np.ndarray | None = None
+        # Profiler for per-phase timing
+        self.profiler = SimulationProfiler()
+        # Tick history: stores (tick_number, duration_ms, agent_count, births, deaths) last 1000
+        self.tick_history: list = []
 
     async def start(self) -> None:
         """Start the simulation, resetting tick count and spawning agents."""
@@ -118,52 +125,56 @@ class SimulationEngine:
         }
 
     async def tick(self) -> dict:
-        """Execute one simulation tick.
+        """Execute one simulation tick with per-phase profiling.
 
         Returns:
             Dictionary with metrics for this tick.
         """
         self.tick_count += 1
         agents = self.agents
+
+        # Start profiler for this tick
+        self.profiler.start_tick()
+
+        # Pre-allocate resting mask once
+        if self._resting_mask is None:
+            self._resting_mask = np.zeros(agents.capacity, dtype=bool)
+        self._resting_mask[:] = False
+
+        # Track births/deaths for tick history
+        pre_alive_count = agents.active_count
+        births = 0
+        deaths = 0
+
+        # ---- Phase 1: Movement ----
+        t0 = time.perf_counter()
         alive_mask = agents.alive
         alive_indices = np.flatnonzero(alive_mask)
         n_alive = len(alive_indices)
-
-        # Phase 1: Movement
-        reset_rest = True
-        if not hasattr(self, '_resting_mask') or self._resting_mask is None:
-            self._resting_mask = np.zeros(agents.capacity, dtype=bool)
-        
-        # Reset resting mask from previous tick
-        self._resting_mask[:] = False
-        
         if n_alive > 0:
             agents.tick_movement(self.world.width, self.world.height)
+        t1 = time.perf_counter()
+        self.profiler.record_phase("movement", (t1 - t0) * 1000.0)
 
-            # Phase 2: Decision making
+        # ---- Phase 2: Decision making ----
+        t0 = time.perf_counter()
+        if n_alive > 0:
             perception = self._compute_perception(agents)
-            
-            # Gather all decision inputs for alive agents
             hunger = agents.hunger[alive_indices]
             energy = agents.energy[alive_indices]
             fertility = agents.genome_fertility[alive_indices]
             nearby_food = perception["nearby_food"]
             nearby_mates = perception["nearby_mates"]
             threat = perception["threat"]
-            
-            # Personality traits
             p_openness = agents.personality_openness[alive_indices]
             p_conscientiousness = agents.personality_conscientiousness[alive_indices]
             p_extraversion = agents.personality_extraversion[alive_indices]
             p_agreeableness = agents.personality_agreeableness[alive_indices]
             p_neuroticism = agents.personality_neuroticism[alive_indices]
             intelligence = agents.genome_intelligence[alive_indices]
-
-            # Get positions for distance calculation
             agent_pos_x = agents.position_x[alive_indices].astype(np.float32)
             agent_pos_y = agents.position_y[alive_indices].astype(np.float32)
 
-            # Compute decisions
             actions = decide(
                 hunger=hunger,
                 energy=energy,
@@ -180,54 +191,52 @@ class SimulationEngine:
                 agent_x=agent_pos_x,
                 agent_y=agent_pos_y,
             )
+        else:
+            actions = np.array([], dtype=np.int32)
+        t1 = time.perf_counter()
+        self.profiler.record_phase("decisions", (t1 - t0) * 1000.0)
 
-            # Phase 3: Apply decisions to alive agents
+        # ---- Phase 3: Apply decisions (vectorized, no Python loops) ----
+        # Start profiler for reproduction tracking separately
+        t0 = time.perf_counter()
+        if n_alive > 0:
             # Action 0: eat - consume resources, gain energy
             eat_mask = actions == 0
             eat_indices = alive_indices[eat_mask]
             if len(eat_indices) > 0:
                 eat_pos_x = agents.position_x[eat_indices]
                 eat_pos_y = agents.position_y[eat_indices]
-                # Consume resources from world
                 available = self.world.resources[eat_pos_x, eat_pos_y]
                 consumption = np.minimum(available, 0.3)
                 self.world.resources[eat_pos_x, eat_pos_y] -= consumption
-                # Gain energy proportional to metabolism efficiency
                 metabolism_bonus = agents.genome_metabolism[eat_indices]
                 energy_gain = consumption * 50.0 * (0.8 + 0.4 * metabolism_bonus)
                 agents.energy[eat_indices] = np.clip(
                     agents.energy[eat_indices] + energy_gain, 0.0, 100.0
                 )
-                # Reduce hunger
                 agents.hunger[eat_indices] = np.maximum(
                     agents.hunger[eat_indices] - 10.0, 0.0
                 )
 
-            # Action 1: move - already handled by tick_movement, but use genome_speed
-            # (movement speed is used for distance, already in tick_movement)
-            
-            # Action 2: reproduce - use decision instead of random chance
+            # Action 2: reproduce - batch spawn (vectorized)
             reproduce_mask = actions == 2
-            # Only allow reproduction if energy is above threshold
             reproduce_and_eligible = reproduce_mask & (agents.energy[alive_indices] >= 80.0)
             reproduce_indices = alive_indices[reproduce_and_eligible]
             if len(reproduce_indices) > 0:
-                # Check free slots
                 free_mask = ~agents.alive
                 free_indices = np.flatnonzero(free_mask)
                 n_off = min(len(reproduce_indices), len(free_indices))
                 if n_off > 0:
                     reproduce_indices = reproduce_indices[:n_off]
                     child_indices = free_indices[:n_off]
-                    
-                    # Crossover partner selection
+                    births = n_off
+
+                    # Vectorized crossover for all genes at once
                     partner_indices = reproduce_indices[(np.arange(n_off) + 1) % n_off]
-                    
-                    genes = ["speed", "metabolism", "fertility", "resilience",
-                             "aggression", "intelligence", "size"]
                     gene_attrs = [
                         "genome_speed", "genome_metabolism", "genome_fertility",
-                        "genome_resilience", "genome_aggression", "genome_intelligence", "genome_size",
+                        "genome_resilience", "genome_aggression",
+                        "genome_intelligence", "genome_size",
                     ]
                     for attr in gene_attrs:
                         p1_vals = getattr(agents, attr)[reproduce_indices]
@@ -236,9 +245,11 @@ class SimulationEngine:
                         child_genome = np.where(allele_choice, p1_vals, p2_vals)
                         mutation_mask = np.random.random(n_off) < 0.05
                         mutation_delta = np.random.uniform(-0.1, 0.1, n_off)
-                        child_genome = np.where(mutation_mask,
-                                                np.clip(child_genome + mutation_delta, 0.0, 1.0),
-                                                child_genome)
+                        child_genome = np.where(
+                            mutation_mask,
+                            np.clip(child_genome + mutation_delta, 0.0, 1.0),
+                            child_genome,
+                        )
                         getattr(agents, attr)[child_indices] = child_genome
 
                     # Vision range
@@ -246,32 +257,42 @@ class SimulationEngine:
                     p2_v = agents.genome_vision[partner_indices]
                     child_v = np.where(np.random.random(n_off) < 0.5, p1_v, p2_v)
                     v_mut = np.random.random(n_off) < 0.05
-                    child_v = np.where(v_mut,
-                                       np.clip(child_v + np.random.randint(-1, 2, n_off), 1, 10),
-                                       child_v)
+                    child_v = np.where(
+                        v_mut,
+                        np.clip(child_v + np.random.randint(-1, 2, n_off), 1, 10),
+                        child_v,
+                    )
                     agents.genome_vision[child_indices] = child_v
-                    
+
                     # Personality inheritance
-                    p_traits = ["personality_openness", "personality_conscientiousness",
-                                "personality_extraversion", "personality_agreeableness",
-                                "personality_neuroticism"]
+                    p_traits = [
+                        "personality_openness", "personality_conscientiousness",
+                        "personality_extraversion", "personality_agreeableness",
+                        "personality_neuroticism",
+                    ]
                     for trait_attr in p_traits:
-                        t1 = getattr(agents, trait_attr)[reproduce_indices]
-                        t2 = getattr(agents, trait_attr)[partner_indices]
-                        child_trait = np.clip(0.5 * (t1 + t2) + np.random.normal(0, 0.05, n_off), 0.0, 1.0)
+                        t1_vals = getattr(agents, trait_attr)[reproduce_indices]
+                        t2_vals = getattr(agents, trait_attr)[partner_indices]
+                        child_trait = np.clip(
+                            0.5 * (t1_vals + t2_vals) + np.random.normal(0, 0.05, n_off),
+                            0.0, 1.0,
+                        )
                         getattr(agents, trait_attr)[child_indices] = child_trait
-                    
+
+                    # Parent energy & offspring setup (all vectorized)
                     parents_energy = agents.energy[reproduce_indices].copy()
                     agents.energy[reproduce_indices] *= 0.5
                     agents.hunger[reproduce_indices] = np.minimum(
                         agents.hunger[reproduce_indices] + 5.0, 100.0
                     )
                     agents.position_x[child_indices] = np.clip(
-                        agents.position_x[reproduce_indices] + np.random.randint(-1, 2, n_off, dtype=np.int32),
+                        agents.position_x[reproduce_indices]
+                        + np.random.randint(-1, 2, n_off, dtype=np.int32),
                         0, self.world.width - 1,
                     )
                     agents.position_y[child_indices] = np.clip(
-                        agents.position_y[reproduce_indices] + np.random.randint(-1, 2, n_off, dtype=np.int32),
+                        agents.position_y[reproduce_indices]
+                        + np.random.randint(-1, 2, n_off, dtype=np.int32),
                         0, self.world.height - 1,
                     )
                     agents.energy[child_indices] = parents_energy
@@ -279,31 +300,36 @@ class SimulationEngine:
                     agents.health[child_indices] = 100.0
                     agents.age[child_indices] = 0
                     agents.parent_ids[child_indices] = agents.agent_ids[reproduce_indices]
-                    agents.generation[child_indices] = agents.generation[reproduce_indices] + 1
-                    new_ids = np.arange(agents._next_id, agents._next_id + n_off, dtype=np.int32)
+                    agents.generation[child_indices] = (
+                        agents.generation[reproduce_indices] + 1
+                    )
+                    new_ids = np.arange(
+                        agents._next_id, agents._next_id + n_off, dtype=np.int32
+                    )
                     agents.agent_ids[child_indices] = new_ids
                     agents._next_id += n_off
                     agents.alive[child_indices] = True
 
-            # Action 3: rest - skip movement next tick, recover small energy
+            # Action 3: rest
             rest_mask = actions == 3
             rest_indices = alive_indices[rest_mask]
             if len(rest_indices) > 0:
                 self._resting_mask[rest_indices] = True
-                # Recover small energy
                 recovery = 2.0 + 1.0 * agents.genome_resilience[rest_indices]
                 agents.energy[rest_indices] = np.clip(
                     agents.energy[rest_indices] + recovery, 0.0, 100.0
                 )
 
-            # Action 4: flee - move 2-3 cells away from threat
+            # Action 4: flee
             flee_mask = actions == 4
             flee_indices = alive_indices[flee_mask]
             if len(flee_indices) > 0:
-                # Flee direction: away from current position threat source
-                # Use nearest resource-depleted cell as threat proxy
-                threat_dir_x = np.random.choice([-1, 1], size=len(flee_indices))
-                threat_dir_y = np.random.choice([-1, 1], size=len(flee_indices))
+                threat_dir_x = np.random.choice(
+                    [-1, 1], size=len(flee_indices)
+                )
+                threat_dir_y = np.random.choice(
+                    [-1, 1], size=len(flee_indices)
+                )
                 flee_distance = np.random.randint(2, 4, size=len(flee_indices))
                 agents.position_x[flee_indices] = np.clip(
                     agents.position_x[flee_indices] + threat_dir_x * flee_distance,
@@ -313,28 +339,57 @@ class SimulationEngine:
                     agents.position_y[flee_indices] + threat_dir_y * flee_distance,
                     0, self.world.height - 1,
                 )
+        t1 = time.perf_counter()
+        self.profiler.record_phase("reproduction", (t1 - t0) * 1000.0)
 
-            # Action 5: idle - do nothing extra (costs only energy)
-
-            # Phase 4: Energy decay (genome_metabolism aware)
+        # ---- Phase 4: Energy decay ----
+        t0 = time.perf_counter()
+        if n_alive > 0:
             agents.tick_energy()
+        t1 = time.perf_counter()
+        self.profiler.record_phase("energy", (t1 - t0) * 1000.0)
 
-            # Phase 5: Hunger
+        # ---- Phase 5: Hunger ----
+        t0 = time.perf_counter()
+        if n_alive > 0:
             agents.tick_hunger()
+        t1 = time.perf_counter()
+        self.profiler.record_phase("hunger", (t1 - t0) * 1000.0)
 
-            # Phase 6: Deaths (genome_resilience aware)
-            agents.check_deaths()
+        # ---- Phase 6: Deaths ----
+        t0 = time.perf_counter()
+        if n_alive > 0:
+            deaths = agents.check_deaths()
+            # Compact dead slots periodically to reduce fragmentation
+            if self.tick_count % 50 == 0:
+                agents.compact_dead_slots()
+        t1 = time.perf_counter()
+        self.profiler.record_phase("death", (t1 - t0) * 1000.0)
 
-        # Phase 7: Regenerate world resources
+        # ---- Phase 7: World regeneration ----
+        t0 = time.perf_counter()
         self.world.regenerate()
+        t1 = time.perf_counter()
+        self.profiler.record_phase("world", (t1 - t0) * 1000.0)
+
+        # Record total tick time (was started at top of tick)
+        self.profiler.end_tick()
 
         # Compute and store metrics
         metrics = compute_tick_metrics(self.world, self.tick_count)
         self.metrics_history.append(metrics)
-        
-        # Keep only the last 100 metrics entries
         if len(self.metrics_history) > 100:
             self.metrics_history = self.metrics_history[-100:]
+
+        # Record tick history (last 1000 ticks)
+        post_alive_count = agents.active_count
+        current_duration_ms = self.profiler.get_stats()["total"]["last_ms"]
+        self.tick_history.append(
+            (self.tick_count, current_duration_ms, post_alive_count, births, deaths)
+        )
+        if len(self.tick_history) > 1000:
+            self.tick_history = self.tick_history[-1000:]
+
         return metrics
 
     async def run_loop(self) -> None:
@@ -383,3 +438,72 @@ class SimulationEngine:
             List of metric dictionaries.
         """
         return self.metrics_history
+
+    def get_profile_report(self) -> dict:
+        """Return the profiler report with per-phase timing stats.
+
+        Returns:
+            Dict with summary and per-phase timing information.
+        """
+        return self.profiler.get_report()
+
+    def profile_report(self) -> dict:
+        """Alias for get_profile_report()."""
+        return self.get_profile_report()
+
+    def enable_stress_test(self, agent_count: int) -> None:
+        """Enable stress test mode by setting max_agents and spawning agents.
+
+        Args:
+            agent_count: Number of agents to spawn for stress testing.
+        """
+        self._original_max_agents = self._config.max_agents
+        self._config.max_agents = agent_count
+        # Recreate agent state with new capacity
+        self.agents = AgentState(max_capacity=agent_count)
+        self.profiler.reset()
+        self.tick_history.clear()
+        self._resting_mask = np.zeros(agent_count, dtype=bool)
+        self.agents.spawn_batch(
+            agent_count,
+            self.world.width,
+            self.world.height,
+        )
+
+    def disable_stress_test(self) -> None:
+        """Disable stress test mode and reset to normal configuration."""
+        self._config.max_agents = self._original_max_agents
+        self.agents = AgentState(max_capacity=self._original_max_agents)
+        self.profiler.reset()
+        self.tick_history.clear()
+        self._resting_mask = np.zeros(self._original_max_agents, dtype=bool)
+
+    def get_stress_test_metrics(self) -> dict:
+        """Return aggregated stress test metrics from tick history.
+
+        Returns:
+            Dict with avg_tick_ms, p50, p95, p99, max, min, total_ticks.
+        """
+        if not self.tick_history:
+            return {
+                "avg_tick_ms": 0.0,
+                "p50_tick_ms": 0.0,
+                "p95_tick_ms": 0.0,
+                "p99_tick_ms": 0.0,
+                "max_tick_ms": 0.0,
+                "min_tick_ms": 0.0,
+                "total_ticks": 0,
+            }
+
+        durations = np.array([entry[1] for entry in self.tick_history], dtype=np.float32)
+        total_ticks = len(durations)
+
+        return {
+            "avg_tick_ms": float(np.mean(durations)),
+            "p50_tick_ms": float(np.percentile(durations, 50)),
+            "p95_tick_ms": float(np.percentile(durations, 95)),
+            "p99_tick_ms": float(np.percentile(durations, 99)),
+            "max_tick_ms": float(np.max(durations)),
+            "min_tick_ms": float(np.min(durations)),
+            "total_ticks": total_ticks,
+        }
