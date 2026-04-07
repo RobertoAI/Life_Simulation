@@ -1,0 +1,164 @@
+{% extends "base.html" %}
+
+{% block title %}Stress Test - AI Life Simulator{% endblock %}
+
+{% block head_extra %}
+<link rel="stylesheet" href="/static/css/dashboard.css">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js" defer></script>
+<script src="/static/js/canvas-utils.js"></script>
+<script src="/static/js/stress-test.js" defer></script>
+{% endblock %}
+
+{% block content %}
+<!-- Header Card -->
+<div class="stress-header">
+    <h2>&#9889; 50K Agent Stress Test</h2>
+    <div class="header-actions">
+        <span id="ws-sim-chip" class="ws-chip disconnected">WS: Sim</span>
+        <span id="ws-gpu-chip" class="ws-chip disconnected">WS: GPU</span>
+        <span id="stress-status" class="stress-status stopped">Stopped</span>
+    </div>
+</div>
+
+<!-- Controls Row -->
+<div class="stress-controls">
+    <div class="stress-control-group">
+        <label for="agent-count-slider">Agent Count</label>
+        <input type="range" id="agent-count-slider" min="1000" max="50000" step="1000" value="10000">
+        <span class="range-display" id="agent-count-display">10,000 agents</span>
+    </div>
+
+    <div class="stress-control-group">
+        <label>Grid Size</label>
+        <div class="grid-size-group" id="grid-size-group">
+            <button class="grid-size-btn" data-width="200" data-height="200">200x200</button>
+            <button class="grid-size-btn active" data-width="300" data-height="300">300x300</button>
+            <button class="grid-size-btn" data-width="400" data-height="400">400x400</button>
+            <button class="grid-size-btn" data-width="500" data-height="500">500x500</button>
+        </div>
+    </div>
+
+    <div class="stress-control-group" style="margin-left: auto;">
+        <label>Actions</label>
+        <div class="btn-group">
+            <button id="btn-stress-start" class="btn btn-stress-start">&#9654; Start Stress Test</button>
+            <button id="btn-stress-stop" class="btn btn-stress-stop" disabled>&#9724; Stop</button>
+        </div>
+    </div>
+</div>
+
+<!-- Primary Metric Cards -->
+<div class="metric-cards-large">
+    <div class="metric-card-large">
+        <div class="metric-label">Frames Per Second</div>
+        <div class="metric-value" id="metric-fps">--</div>
+        <div class="metric-unit">fps</div>
+        <div class="mini-gauge"><div class="mini-gauge-fill" id="gauge-fps" style="width: 0%;"></div></div>
+    </div>
+
+    <div class="metric-card-large">
+        <div class="metric-label">Avg Tick Time</div>
+        <div class="metric-value" id="metric-avg-tick">--</div>
+        <div class="metric-unit">ms</div>
+        <div class="mini-gauge"><div class="mini-gauge-fill" id="gauge-avg-tick" style="width: 0%;"></div></div>
+    </div>
+
+    <div class="metric-card-large">
+        <div class="metric-label">Active Agents</div>
+        <div class="metric-value" id="metric-active-agents">--</div>
+        <div class="metric-unit">population</div>
+    </div>
+
+    <div class="metric-card-large">
+        <div class="metric-label">Births / Sec</div>
+        <div class="metric-value" id="metric-births">--</div>
+        <div class="metric-unit">births/s</div>
+    </div>
+
+    <div class="metric-card-large">
+        <div class="metric-label">Deaths / Sec</div>
+        <div class="metric-value" id="metric-deaths">--</div>
+        <div class="metric-unit">deaths/s</div>
+    </div>
+
+    <div class="metric-card-large">
+        <div class="metric-label">Net Population Change</div>
+        <div class="metric-value" id="metric-net-pop">--</div>
+        <div class="metric-unit">agents/s</div>
+    </div>
+</div>
+
+<!-- Secondary Metrics Row -->
+<div class="secondary-metrics">
+    <div class="secondary-metric">
+        <div class="sec-label">Peak Tick Time</div>
+        <div class="sec-value" id="metric-peak-tick">--</div>
+        <div class="sec-unit">ms</div>
+    </div>
+    <div class="secondary-metric">
+        <div class="sec-label">P50 Tick Time</div>
+        <div class="sec-value" id="metric-p50-tick">--</div>
+        <div class="sec-unit">ms</div>
+    </div>
+    <div class="secondary-metric">
+        <div class="sec-label">P95 Tick Time</div>
+        <div class="sec-value" id="metric-p95-tick">--</div>
+        <div class="sec-unit">ms</div>
+    </div>
+    <div class="secondary-metric">
+        <div class="sec-label">P99 Tick Time</div>
+        <div class="sec-value" id="metric-p99-tick">--</div>
+        <div class="sec-unit">ms</div>
+    </div>
+    <div class="secondary-metric">
+        <div class="sec-label">Memory Estimate</div>
+        <div class="sec-value" id="metric-memory">--</div>
+        <div class="sec-unit">MB</div>
+    </div>
+    <div class="secondary-metric">
+        <div class="sec-label">Queue Size</div>
+        <div class="sec-value" id="metric-queue-size">--</div>
+        <div class="sec-unit">pending writes</div>
+    </div>
+    <div class="secondary-metric">
+        <div class="sec-label">Total Ticks</div>
+        <div class="sec-value" id="metric-total-ticks">0</div>
+        <div class="sec-unit">processed</div>
+    </div>
+    <div class="secondary-metric">
+        <div class="sec-label">Elapsed Time</div>
+        <div class="sec-value" id="metric-elapsed">00:00</div>
+        <div class="sec-unit">mm:ss</div>
+    </div>
+</div>
+
+<!-- Charts Section -->
+<div class="charts-section">
+    <div class="chart-container">
+        <h3>Tick Time (last 100 ticks)</h3>
+        <div class="chart-wrapper">
+            <canvas id="chartTickTime"></canvas>
+        </div>
+    </div>
+    <div class="chart-container">
+        <h3>Population Over Time</h3>
+        <div class="chart-wrapper">
+            <canvas id="chartPopulation"></canvas>
+        </div>
+    </div>
+    <div class="chart-container full-width">
+        <h3>Births vs Deaths (per 10-tick window)</h3>
+        <div class="chart-wrapper">
+            <canvas id="chartBirthsDeaths"></canvas>
+        </div>
+    </div>
+</div>
+
+<!-- Live Map Canvas -->
+<div class="stress-canvas-wrap">
+    <h3>Live Map Rendering</h3>
+    <div class="stress-canvas-container">
+        <canvas id="stress-world-canvas"></canvas>
+    </div>
+</div>
+{% endblock %}
