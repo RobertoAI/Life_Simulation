@@ -97,12 +97,79 @@ function heatColor(val) {
 }
 
 /**
- * Render agents as colored 3x3 dots on a canvas using ImageData.
+ * Compute dot radius for an agent based on genome_size.
+ * Returns radius in pixels (1 = 3x3 dot, 2 = 5x5 dot, etc.)
+ *
+ * @param {Object} agent - Agent object (may have genome_size or genome).
+ * @returns {number} Dot radius (1-2).
+ */
+function getAgentDotRadius(agent) {
+    if (agent.genome_size !== undefined) {
+        // Map genome_size to radius: 0->1, 100->2
+        return Math.max(1, Math.min(2, 1 + agent.genome_size / 100));
+    }
+    // If genome object exists, compute average
+    if (agent.genome && typeof agent.genome === 'object') {
+        const values = Object.values(agent.genome).filter(v => typeof v === 'number');
+        if (values.length > 0) {
+            const avg = values.reduce((a, b) => a + b, 0) / values.length;
+            return Math.max(1, Math.min(2, 1 + avg / 100));
+        }
+    }
+    return 1;  // default
+}
+
+/**
+ * Compute color for an agent based on energy + personality hue shift.
+ *
+ * @param {Object} agent - Agent object with energy and optionally personality.
+ * @returns {{r: number, g: number, b: number}} RGB color.
+ */
+function getAgentColor(agent) {
+    const energy = Math.max(0, Math.min(1, agent.energy || 0));
+    let r, g, b;
+
+    if (energy >= 0.5) {
+        // Yellow (0.5) to green (1.0)
+        const t = (energy - 0.5) * 2;  // 0..1
+        r = Math.round(200 * (1 - t));
+        g = 200 + Math.round(55 * t);
+        b = 0;
+    } else {
+        // Red (0) to yellow (0.5)
+        const t = energy * 2;  // 0..1
+        r = 200;
+        g = Math.round(200 * t);
+        b = 0;
+    }
+
+    // Personality hue shift: neuroticism adds purple tint
+    if (agent.personality && typeof agent.personality === 'object') {
+        const neuro = agent.personality.neuroticism || 0;
+        const neuroNorm = Math.max(0, Math.min(1, neuro));
+        // Blend toward purple (add blue, slightly reduce red)
+        b = Math.round(Math.min(255, b + neuroNorm * 80));
+        r = Math.round(r * (1 - neuroNorm * 0.15));
+
+        // Openness adds slight cyan tint
+        const openness = agent.personality.openness || 0;
+        const openNorm = Math.max(0, Math.min(1, openness));
+        b = Math.round(Math.min(255, b + openNorm * 40));
+        g = Math.round(Math.min(255, g + openNorm * 30));
+    }
+
+    return { r, g, b };
+}
+
+/**
+ * Render agents as colored dots on a canvas using ImageData.
  * Agent color is based on energy: green (high) -> yellow (medium) -> red (low).
- * Pixels are drawn on top of whatever is already on the canvas.
+ * Dot size scales with genome_size (if available).
+ * Color hue shifts based on personality traits (e.g. neuroticism = purple tint).
+ * Optional extra data is passed per-agent: genome_size, genome, personality.
  *
  * @param {HTMLCanvasElement} canvas - The target canvas element (overlay layer).
- * @param {Object[]} agents - Array of agent objects with {x, y, energy}.
+ * @param {Object[]} agents - Array of agent objects with {x, y, energy} plus optional genome/personality.
  * @param {number} mapWidth - Grid width (matches terrain width).
  * @param {number} mapHeight - Grid height (matches terrain height).
  */
@@ -117,8 +184,6 @@ function renderAgents(canvas, agents, mapWidth, mapHeight) {
     const imageData = ctx.createImageData(mapWidth, mapHeight);
     const data = imageData.data;
 
-    const DOT_RADIUS = 1;  // 3x3 pixel dots (center +/- 1)
-
     for (let i = 0; i < agents.length; i++) {
         const agent = agents[i];
         const ax = Math.floor(agent.x);
@@ -127,33 +192,19 @@ function renderAgents(canvas, agents, mapWidth, mapHeight) {
         // Skip agents outside map bounds
         if (ax < 0 || ax >= mapWidth || ay < 0 || ay >= mapHeight) continue;
 
-        // Color based on energy: green (high) -> yellow (medium) -> red (low)
-        const energy = Math.max(0, Math.min(1, agent.energy));
-        let r, g, b;
-        if (energy >= 0.5) {
-            // Yellow (0.5) to green (1.0)
-            const t = (energy - 0.5) * 2;  // 0..1
-            r = Math.round(200 * (1 - t));
-            g = 200 + Math.round(55 * t);
-            b = 0;
-        } else {
-            // Red (0) to yellow (0.5)
-            const t = energy * 2;  // 0..1
-            r = 200;
-            g = Math.round(200 * t);
-            b = 0;
-        }
+        const color = getAgentColor(agent);
+        const dotRadius = Math.floor(getAgentDotRadius(agent));
 
-        // Draw 3x3 dot
-        for (let dy = -DOT_RADIUS; dy <= DOT_RADIUS; dy++) {
-            for (let dx = -DOT_RADIUS; dx <= DOT_RADIUS; dx++) {
+        // Draw dot
+        for (let dy = -dotRadius; dy <= dotRadius; dy++) {
+            for (let dx = -dotRadius; dx <= dotRadius; dx++) {
                 const px = ax + dx;
                 const py = ay + dy;
                 if (px >= 0 && px < mapWidth && py >= 0 && py < mapHeight) {
                     const idx = (py * mapWidth + px) * 4;
-                    data[idx] = r;
-                    data[idx + 1] = g;
-                    data[idx + 2] = b;
+                    data[idx] = color.r;
+                    data[idx + 1] = color.g;
+                    data[idx + 2] = color.b;
                     data[idx + 3] = 255;
                 }
             }
@@ -161,4 +212,22 @@ function renderAgents(canvas, agents, mapWidth, mapHeight) {
     }
 
     ctx.putImageData(imageData, 0, 0);
+}
+
+/**
+ * Compute generation diversity from an array of agents.
+ * Returns the count of unique generation values.
+ *
+ * @param {Object[]} agents - Array of agent objects with optional generation field.
+ * @returns {number} Number of unique generations.
+ */
+function getGenerationDiversity(agents) {
+    if (!agents || agents.length === 0) return 0;
+    const gens = new Set();
+    for (const agent of agents) {
+        if (agent.generation !== undefined && agent.generation !== null) {
+            gens.add(agent.generation);
+        }
+    }
+    return gens.size;
 }

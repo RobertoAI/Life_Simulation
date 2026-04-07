@@ -22,6 +22,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const tickEl = document.getElementById('tick-count');
     const speedEl = document.getElementById('speed-value');
     const agentCountEl = document.getElementById('agent-count');
+    const genDiversityEl = document.getElementById('gen-diversity');
 
     if (!canvas) return;  // Safety check
 
@@ -52,10 +53,16 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         // If agents array is in the payload, render them on the overlay
+        // WS payload may now include genome, genome_size, personality per agent
         if (data.agents) {
             renderAgents(agentCanvas, data.agents, CONFIG.width, CONFIG.height);
             if (agentCountEl) {
                 agentCountEl.textContent = data.agents.length;
+            }
+            // Show generation diversity if element exists
+            if (genDiversityEl) {
+                const diversity = getGenerationDiversity(data.agents);
+                genDiversityEl.textContent = diversity;
             }
         }
 
